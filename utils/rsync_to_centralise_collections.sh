@@ -13,10 +13,7 @@ LOCAL_PARENT="$1/data"
 # ——— CONFIGURATION ———
 # List your servers (DNS name or IP)
 REMOTE_SERVERS=(
-  psw_collectors
-  nowpop_collectors
   dgg_collectors
-  simon
 )
 
 # Path on each remote you want to sync (no trailing slash here)
