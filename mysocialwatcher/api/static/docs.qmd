@@ -1,11 +1,38 @@
 ---
-title: API Docs
-output: rmdformats::readthedown
+title: "Social Watcher API"
+subtitle: "Social media audience research · API documentation"
+lang: en
+format:
+  html:
+    theme: darkly
+    css: docs.css
+    toc: true
+    toc-title: "On this page"
+    toc-depth: 2
+    toc-expand: true
+    toc-location: left
+    embed-resources: true
+    code-copy: true
+    anchor-sections: true
+    highlight-style: github-dark
+    title-block-banner: false
+api-root: "http://api.realgoodresearch.com/socialwatcher/v1/"
+sysadmin_email: "doug@realgoodresearch.com"
+engine: markdown
 ---
+
+<!-- Render with:
+     quarto render mysocialwatcher/api/static/docs.qmd
+     API examples are printed as text, never executed. -->
 
 # Social Media Audience
 
-The API endpoints located at `http://18.135.72.18/api/v1/[endpoint]` 
+API root: `{{< meta api-root >}}`
+
+All endpoint URLs and examples below use this API root.
+
+
+The API endpoints located at `{{< meta api-root >}}[endpoint]` 
 provide access to the LCDS database containing counts of social media users for 
 specific locations, time periods, and demographic groups. This API requires 
 approved credentials for access.  
@@ -15,19 +42,19 @@ approved credentials for access.
 
 ## Overview of all endpoints
 
-**./api/v1/query**  
+**{{< meta api-root >}}query**  
 Returns social media audience estimates in raw data format (i.e. from pySocialWatcher) for specific locations, dates, and demographic groups.
 
-**./api/v1/query_clean**  
+**{{< meta api-root >}}query_clean**  
 Returns social media audience estimates in a cleaned format for specific locations, dates, and demographic groups.
 
-**./api/v1/list_collections**  
+**{{< meta api-root >}}list_collections**  
 List all collection names that you have permission to access.
 
-**./api/v1/monitor_collections**  
+**{{< meta api-root >}}monitor_collections**  
 Get summary statistics for recent data from your collections.
 
-**./api/v1/write**  
+**{{< meta api-root >}}write**  
 Write new data into the database (requires authentication with write-access).
 
 
@@ -40,9 +67,9 @@ You can use it to pull a subset of data directly into R or Python (examples belo
 will be returned along with a status code of 206 (partial content) rather than a 
 success code (200).
 
-URL: `http://18.135.72.18/api/v1/query`  
+URL: `{{< meta api-root >}}query`  
 
-Arguments syntax: `http://18.135.72.18/api/v1/query?argument1=value1&argument2=value2`  
+Arguments syntax: `{{< meta api-root >}}query?argument1=value1&argument2=value2`  
 
 
 **API Arguments**  
@@ -51,7 +78,7 @@ Arguments syntax: `http://18.135.72.18/api/v1/query?argument1=value1&argument2=v
 
 Argument | Description
 |:-- |:-----------
-token | API token for read access (contact [douglas.leasure@demography.ox.ac.uk](mailto:douglas.leasure@demography.ox.ac.uk))
+token | API token for read access (contact [{{< meta sysadmin_email >}}](mailto:{{< meta sysadmin_email >}}))
 platform | Name of platform where data were collected. Acceptable values: facebook, instagram
 
 *Optional Arguments*  
@@ -91,12 +118,12 @@ For example:
 **Examples**
 
 *Query data using a url:*  
-```
-http://18.135.72.18/api/v1/query?platform=facebook&country=GB&gender=0&date_start=2020-03-11&date_end=2020-03-12
+```text
+{{< meta api-root >}}query?platform=facebook&country=GB&gender=0&date_start=2020-03-11&date_end=2020-03-12
 ```
 
 *Query data from Python:*  
-```
+```python
 # import packages
 import requests
 import pandas as pd
@@ -111,7 +138,7 @@ args = {
   }
 
 # submit query as GET request
-response = requests.get(url='http://18.135.72.18/api/v1/query', params=args)
+response = requests.get(url='{{< meta api-root >}}query', params=args)
 
 # format response as dictionary
 response = response.json()
@@ -127,7 +154,7 @@ if response.get('status') == 200:
 
 **Query data from R:**  
 
-```
+```r
 # import packages
 library('httr')
 library('jsonlite')
@@ -141,8 +168,7 @@ args <- list(token = "xxxxxxxxx",
              date_start = "2020-03-11")
 
 # submit query as GET request
-response <- httr::GET(url = 'http://18.135.72.18/', 
-                      path = 'api/v1/query',
+response <- httr::GET(url = '{{< meta api-root >}}query',
                       query = args)
 
 # format response as list
@@ -196,9 +222,9 @@ geometries to the result.
 will be returned along with a status code of 206 (partial content) rather than a 
 success code (200).
 
-URL: `http://18.135.72.18/api/v1/query_clean`  
+URL: `{{< meta api-root >}}query_clean`  
 
-Arguments syntax: `http://18.135.72.18/api/v1/query_clean?argument1=value1&argument2=value2`  
+Arguments syntax: `{{< meta api-root >}}query_clean?argument1=value1&argument2=value2`  
 
 
 **API Arguments**  
@@ -207,7 +233,7 @@ Arguments syntax: `http://18.135.72.18/api/v1/query_clean?argument1=value1&argum
 
 Argument | Description
 |:-- |:-----------
-token | API token for read access (contact [douglas.leasure@demography.ox.ac.uk](mailto:douglas.leasure@demography.ox.ac.uk))
+token | API token for read access (contact [{{< meta sysadmin_email >}}](mailto:{{< meta sysadmin_email >}}))
 platform | Name of platform where data were collected. Acceptable values: facebook, instagram
 
 *Optional Arguments*  
@@ -256,12 +282,12 @@ For example:
 **Examples**
 
 *Query data using a url:*  
-```
-http://18.135.72.18/api/v1/query_clean?platform=facebook&country=GB&gender=0&date_start=2020-03-11&date_end=2020-03-12
+```text
+{{< meta api-root >}}query_clean?platform=facebook&country=GB&gender=0&date_start=2020-03-11&date_end=2020-03-12
 ```
 
 *Query data from Python:*  
-```
+```python
 # import packages
 import requests
 import pandas as pd
@@ -276,7 +302,7 @@ args = {
   }
 
 # submit query as GET request
-response = requests.get(url='http://18.135.72.18/api/v1/query_clean', params=args)
+response = requests.get(url='{{< meta api-root >}}query_clean', params=args)
 
 # format response as dictionary
 response = response.json()
@@ -292,7 +318,7 @@ if response.get('status') == 200:
 
 **Query data from R:**  
 
-```
+```r
 # import packages
 library('httr')
 library('jsonlite')
@@ -306,8 +332,7 @@ args <- list(token = "xxxxxxxxx",
              date_start = "2020-03-11")
 
 # submit query as GET request
-response <- httr::GET(url = 'http://18.135.72.18/', 
-                      path = 'api/v1/query_clean',
+response <- httr::GET(url = '{{< meta api-root >}}query_clean',
                       query = args)
 
 # format response as list
@@ -345,11 +370,11 @@ if(response$status == 200){
 This API endpoint returns a list of all collection names that you currently have 
 access to in the *social_media_audience* database. 
 
-URL: `http://18.135.72.18/api/v1/list_collections`  
+URL: `{{< meta api-root >}}list_collections`  
 
-Arguments syntax: `http://18.135.72.18/api/v1/list_collections?token=12345`  
+Arguments syntax: `{{< meta api-root >}}list_collections?token=12345`  
 
-**Note:** An API token is required to access this endpoint. Please contact [douglas.leasure@demography.ox.ac.uk](mailto:douglas.leasure@demography.ox.ac.uk) for more information.
+**Note:** An API token is required to access this endpoint. Please contact [{{< meta sysadmin_email >}}](mailto:{{< meta sysadmin_email >}}) for more information.
 
 
 **API Arguments**  
@@ -358,7 +383,7 @@ Arguments syntax: `http://18.135.72.18/api/v1/list_collections?token=12345`
 
 Argument | Description
 |:-- |:-----------
-token | API access token (contact [douglas.leasure@demography.ox.ac.uk](mailto:douglas.leasure@demography.ox.ac.uk))
+token | API access token (contact [{{< meta sysadmin_email >}}](mailto:{{< meta sysadmin_email >}}))
 
 
 *Optional Arguments*  
@@ -391,11 +416,11 @@ For example:
 This API endpoint returns a count of new data for each of your collections that 
 were written into the database over the past several days. 
 
-URL: `http://18.135.72.18/api/v1/monitor_collections`  
+URL: `{{< meta api-root >}}monitor_collections`  
 
-Arguments syntax: `http://18.135.72.18/api/v1/monitor_collections?token=12345&days=3`  
+Arguments syntax: `{{< meta api-root >}}monitor_collections?token=12345&days=3`  
 
-**Note:** An API token is required to access this endpoint. Please contact [douglas.leasure@demography.ox.ac.uk](mailto:douglas.leasure@demography.ox.ac.uk) for more information.
+**Note:** An API token is required to access this endpoint. Please contact [{{< meta sysadmin_email >}}](mailto:{{< meta sysadmin_email >}}) for more information.
 
 
 **API Arguments**  
@@ -404,7 +429,7 @@ Arguments syntax: `http://18.135.72.18/api/v1/monitor_collections?token=12345&da
 
 Argument | Description
 |:-- |:-----------
-token | API access token (contact [douglas.leasure@demography.ox.ac.uk](mailto:douglas.leasure@demography.ox.ac.uk))
+token | API access token (contact [{{< meta sysadmin_email >}}](mailto:{{< meta sysadmin_email >}}))
 
 
 *Optional Arguments*  
@@ -440,9 +465,9 @@ For example:
 
 This API endpoint returns an overview of all data in the database for a selected country. 
 
-URL: `http://18.135.72.18/api/v1/data_overview`  
+URL: `{{< meta api-root >}}data_overview`  
 
-Arguments syntax: `http://18.135.72.18/api/v1/data_overview?country=PS&date_start=2023-10-07&date_end=2023-10-20`  
+Arguments syntax: `{{< meta api-root >}}data_overview?country=PS&date_start=2023-10-07&date_end=2023-10-20`  
 
 
 **API Arguments**  
@@ -493,14 +518,14 @@ For example:
 
 ## Endpoint: write
 
-URL: `http://18.135.72.18/api/v1/write`  
+URL: `{{< meta api-root >}}write`  
 
-Arguments syntax: `http://18.135.72.18/api/v1/write?argument1=value1&argument2=value2`  
+Arguments syntax: `{{< meta api-root >}}write?argument1=value1&argument2=value2`  
 
 This API endpoint is for writing data into the *social_media_audience* database. 
 You can use it to write data into the database directly from R or Python (example below).  
 
-**Note:** An API token is required to access this endpoint. Please contact [douglas.leasure@demography.ox.ac.uk](mailto:douglas.leasure@demography.ox.ac.uk) for more information.
+**Note:** An API token is required to access this endpoint. Please contact [{{< meta sysadmin_email >}}](mailto:{{< meta sysadmin_email >}}) for more information.
 
 **API Arguments**  
 
@@ -508,7 +533,7 @@ You can use it to write data into the database directly from R or Python (exampl
 
 Argument | Description
 |:-- |:-----------
-token | API token for write access (contact [douglas.leasure@demography.ox.ac.uk](mailto:douglas.leasure@demography.ox.ac.uk)).
+token | API token for write access (contact [{{< meta sysadmin_email >}}](mailto:{{< meta sysadmin_email >}})).
 valid | Indicates if data are valid. Invalid data will not persist in the database. Default="False". Acceptable values (not case sensitive): "true", "t", "y", "yes", "on", "1". All other values will be interpreted as "False".
 platform | Name of platform where data were collected. Acceptable values: "facebook", "instagram".
 timestamp | Timestamp in Unix epoch format (seconds since 1 JAN 1970 UTC) corresponding to the time of the original data collection.
@@ -558,13 +583,13 @@ For example:
 
 *Submit data as a url:*    
 
-```
-http://18.135.72.18/api/v1/write?token=[your token]&valid=true&platform=facebook&timestamp=1640574003&country=GB&gender=0&dau=1000&geo_locations={'name': 'countries', 'values': ['GB'], 'location_types': ['home']}
+```text
+{{< meta api-root >}}write?token=[your token]&valid=true&platform=facebook&timestamp=1640574003&country=GB&gender=0&dau=1000&geo_locations={'name': 'countries', 'values': ['GB'], 'location_types': ['home']}
 ```
 
 *Submit data from Python:*  
 
-```
+```python
 import requests
 
 args = {
@@ -580,7 +605,7 @@ args = {
   "geo_locations": "{'name': 'countries', 'values': ['GB'], 'location_types': ['home']}"
   }
 
-response = requests.get(url='http://18.135.72.18/api/v1/write', params=args)
+response = requests.get(url='{{< meta api-root >}}write', params=args)
 response.text
 ```
 
@@ -592,7 +617,7 @@ In most cases, it is preferable to query the PostgreSQL server using the API
 endpoints above, but it can be useful to connect directly to the SQL server (read-only) to:  
 
 1. Browse the database using a GUI like [DBeaver](https://dbeaver.io)  
-2. Submit advanced SQL queries not currently supported by the `/query` API endpoint (see [query section](#query)).  
+2. Submit advanced SQL queries not currently supported by the `/query` API endpoint (see [query section](#endpoint-query)).  
 
 **Note:** You must be connected to the University of Oxford VPN 
 (i.e. Cisco Anyconnect client) to connect directly to the database.
@@ -605,7 +630,7 @@ Hostname | 18.135.72.18
 Port | 5432
 Database | social_media_audience
 User | reader
-Password | [contact douglas.leasure@demography.ox.ac.uk]
+Password | [contact {{< meta sysadmin_email >}}]
 
 **Examples**  
 

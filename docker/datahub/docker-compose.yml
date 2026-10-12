@@ -22,6 +22,13 @@ services:
     build:
       dockerfile: ./docker/datahub/Dockerfile
       context: ./../../
+    volumes:
+      - type: bind
+        source: ./../../mysocialwatcher/api/static
+        target: /app/mysocialwatcher/api/static
+        read_only: true
+        bind:
+          create_host_path: false
     depends_on:
       - datahub_db
     networks:
