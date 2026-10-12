@@ -9,7 +9,7 @@ services:
       args:
           sleep_time: 11
           email_notification_enable: "True"
-          email_receiver: "douglas.leasure@demography.ox.ac.uk,edith.darin@demography.ox.ac.uk"
+          email_receiver: "doug@realgoodresearch.com"
       context: ./../../../
       dockerfile: ./docker/collectors/Dockerfile
     restart: on-failure
@@ -23,7 +23,7 @@ services:
       args:
           sleep_time: 11
           email_notification_enable: "True"
-          email_receiver: "douglas.leasure@demography.ox.ac.uk,edith.darin@demography.ox.ac.uk"
+          email_receiver: "doug@realgoodresearch.com"
       context: ./../../../
       dockerfile: ./docker/collectors/Dockerfile
     restart: on-failure
@@ -37,7 +37,7 @@ services:
       args:
           sleep_time: 11
           email_notification_enable: "True"
-          email_receiver: "douglas.leasure@demography.ox.ac.uk,edith.darin@demography.ox.ac.uk"
+          email_receiver: "doug@realgoodresearch.com"
       context: ./../../../
       dockerfile: ./docker/collectors/Dockerfile
     restart: on-failure
@@ -51,7 +51,7 @@ services:
       args:
           sleep_time: 11
           email_notification_enable: "True"
-          email_receiver: "douglas.leasure@demography.ox.ac.uk,edith.darin@demography.ox.ac.uk"
+          email_receiver: "doug@realgoodresearch.com"
       context: ./../../../
       dockerfile: ./docker/collectors/Dockerfile
     restart: unless-stopped

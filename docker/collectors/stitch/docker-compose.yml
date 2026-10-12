@@ -9,7 +9,7 @@ services:
       args:
         sleep_time: 2
         email_notification_enable: "True"
-        email_receiver: "douglas.leasure@demography.ox.ac.uk,edith.darin@demography.ox.ac.uk"
+        email_receiver: "doug@realgoodresearch.com"
       context: ./../../../
       dockerfile: ./docker/collectors/Dockerfile
     restart: on-failure
@@ -23,7 +23,7 @@ services:
       args:
         sleep_time: 2
         email_notification_enable: "True"
-        email_receiver: "douglas.leasure@demography.ox.ac.uk,edith.darin@demography.ox.ac.uk"
+        email_receiver: "doug@realgoodresearch.com"
       context: ./../../../
       dockerfile: ./docker/collectors/Dockerfile
     restart: on-failure
@@ -37,24 +37,24 @@ services:
       args:
         sleep_time: 11
         email_notification_enable: "True"
-        email_receiver: "douglas.leasure@demography.ox.ac.uk,edith.darin@demography.ox.ac.uk"
+        email_receiver: "doug@realgoodresearch.com"
       context: ./../../../
       dockerfile: ./docker/collectors/Dockerfile
     restart: on-failure
 
-  israeli_conflict_homerecent:
-    container_name: israeli_conflict_homerecent
-    volumes:
-      - ./israeli_conflict_homerecent:/app/in
-      - ./../../../data/stitch/israeli_conflict_homerecent:/app/data
-    build:
-      args:
-        sleep_time: 11
-        email_notification_enable: "True"
-        email_receiver: "douglas.leasure@demography.ox.ac.uk,edith.darin@demography.ox.ac.uk"
-      context: ./../../../
-      dockerfile: ./docker/collectors/Dockerfile
-    restart: on-failure
+  # israeli_conflict_homerecent:
+  #   container_name: israeli_conflict_homerecent
+  #   volumes:
+  #     - ./israeli_conflict_homerecent:/app/in
+  #     - ./../../../data/stitch/israeli_conflict_homerecent:/app/data
+  #   build:
+  #     args:
+  #       sleep_time: 11
+  #       email_notification_enable: "True"
+  #       email_receiver: "doug@realgoodresearch.com"
+  #     context: ./../../../
+  #     dockerfile: ./docker/collectors/Dockerfile
+  #   restart: on-failure
 
   westbank_cities_homerecent:
     container_name: westbank_cities_homerecent
@@ -65,7 +65,7 @@ services:
       args:
         sleep_time: 11
         email_notification_enable: "True"
-        email_receiver: "douglas.leasure@demography.ox.ac.uk,edith.darin@demography.ox.ac.uk"
+        email_receiver: "doug@realgoodresearch.com"
       context: ./../../../
       dockerfile: ./docker/collectors/Dockerfile
     restart: always
@@ -79,7 +79,7 @@ services:
       args:
         sleep_time: 11
         email_notification_enable: "True"
-        email_receiver: "douglas.leasure@demography.ox.ac.uk,edith.darin@demography.ox.ac.uk"
+        email_receiver: "doug@realgoodresearch.com"
       context: ./../../../
       dockerfile: ./docker/collectors/Dockerfile
     restart: always
@@ -93,7 +93,7 @@ services:
       args:
         sleep_time: 11
         email_notification_enable: "True"
-        email_receiver: "douglas.leasure@demography.ox.ac.uk,edith.darin@demography.ox.ac.uk"
+        email_receiver: "doug@realgoodresearch.com"
       context: ./../../../
       dockerfile: ./docker/collectors/Dockerfile
     restart: always
