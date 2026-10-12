@@ -14,15 +14,12 @@ COPY pysocialwatcher pysocialwatcher
 COPY mysocialwatcher mysocialwatcher
 COPY mysocialwatcher/collector/main.py main.py
 COPY docker/collectors/_utils utils
-COPY utils/collectors_cleanup.sh ./utils/cleanup.sh
 
 RUN chmod 0744 ./utils/launch.sh
-RUN chmod 0744 ./utils/cleanup.sh
 
 # collection config
 RUN ln -s in/credentials.csv credentials.csv
 RUN ln -s in/specs specs
-#RUN ln -s in/.env .env
 
 # define sleep time
 ARG sleep_time
