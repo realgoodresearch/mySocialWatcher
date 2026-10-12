@@ -14,6 +14,9 @@ if [[ ! -d "$REPO_DIR" ]]; then
   exit 1
 fi
 
+# Keep repository paths valid after pushd changes the working directory.
+REPO_DIR=$(cd -- "$REPO_DIR" && pwd -P)
+
 # ——— STEP 0: helper vars ———
 DOCKER_CRAWLER_DIR="$REPO_DIR/docker/crawler"
 DATA_CRAWLER_DIR="$REPO_DIR/data/crawler"
