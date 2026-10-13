@@ -1,35 +1,30 @@
-/* Shared visual palette with docker/datahub/public_html/index.html. */
+/* Matches realgoodresearch/realgoodapi www/custom-theme.scss. */
+@import url("https://fonts.googleapis.com/css2?family=Mulish:wght@300;700;900&family=Roboto:wght@300;400;700&display=swap");
 :root {
-  color-scheme: dark;
-  --background: #0b1220;
-  --surface: rgba(20, 34, 56, 0.9);
-  --text: #eef5ff;
-  --muted: #a9bad1;
-  --accent: #62d4ff;
-  --border: #3b5a78;
+  color-scheme: light;
+  --background: #ffffff;
+  --surface: #ffffff;
+  --text: #1a1a1a;
+  --muted: #66727b;
+  --accent: #2f84c6;
+  --border: #e7eaed;
   --bs-body-color: var(--text);
   --bs-body-bg: var(--background);
   --bs-link-color: var(--accent);
-  --bs-link-hover-color: #a4eaff;
+  --bs-link-hover-color: #226ca4;
 }
 
 body {
   color: var(--text);
-  background: radial-gradient(circle at 15% 10%, #16436a 0, transparent 38%),
-    linear-gradient(145deg, var(--background), #111d31);
-  background-attachment: fixed;
-  font: 16px/1.6 system-ui, sans-serif;
+  background: var(--background);
+  font: 16px/1.7 "Roboto", sans-serif;
 }
 
 main.content {
   min-width: 0;
-  margin-top: 2rem;
-  margin-bottom: 2rem;
-  padding: clamp(1.25rem, 4vw, 3rem);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 24px;
-  box-shadow: 0 24px 70px #0008;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 3.5rem 22px 5rem;
 }
 
 #title-block-header { margin-bottom: 2.5rem; }
@@ -37,32 +32,34 @@ main.content {
   display: block;
   margin-bottom: 0.75rem;
   content: "Real Good Research";
-  color: var(--accent);
+  color: var(--muted);
+  font-family: "Mulish", sans-serif;
   font-size: 0.78rem;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 h1.title {
-  font-size: clamp(2rem, 5vw, 3.5rem);
-  line-height: 1.1;
-  font-weight: 700;
+  font-size: clamp(2.8rem, 7vw, 5.5rem);
+  line-height: 0.95;
+  font-weight: 900;
 }
-.subtitle { color: var(--muted); font-size: 1.1rem; }
-h1, h2, h3, h4 { color: var(--text); }
+.subtitle { margin-top: 1rem; color: var(--muted); font-size: 1.25rem; }
+h1, h2, h3, h4 { color: #000; font-family: "Mulish", sans-serif; }
+h1, h2, .title { font-weight: 900; letter-spacing: -0.04em; }
 h2 { margin-top: 2.5rem; border-bottom-color: var(--border); }
 a { color: var(--accent); text-underline-offset: 0.2em; }
-a:hover { color: #a4eaff; }
+a:hover { color: #226ca4; }
 a:focus-visible, button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 4px;
 }
-code { color: #d8efff; overflow-wrap: anywhere; }
-p code, li code, td code { background: #050d1970; }
+code { color: #1a1a1a; overflow-wrap: anywhere; }
+p code, li code, td code { background: #f6f3ec; }
 pre, div.sourceCode {
-  background: #050d19;
+  background: #f8f9fa;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 6px;
 }
 pre { padding: 1rem; }
 div.sourceCode pre { border: 0; margin: 0; }
@@ -76,19 +73,75 @@ table {
   font-size: 0.93rem;
 }
 .table { --bs-table-color: var(--text); --bs-table-bg: transparent; }
-thead { background: #050d1970; }
+thead { background: #343a40; color: #fff; }
+.table thead th {
+  --bs-table-bg: #343a40;
+  --bs-table-color: #fff;
+  background-color: #343a40;
+  color: #fff;
+}
 th, td { border-color: var(--border) !important; }
 #quarto-margin-sidebar { padding-top: 2rem; }
 #TOC {
   padding: 1.25rem;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 6px;
 }
 #TOC a { color: var(--muted); }
 #TOC a:hover, #TOC a.active { color: var(--accent) !important; }
 #TOC .nav-link.active { border-left-color: var(--accent); }
 @media (max-width: 767px) {
-  main.content { margin-top: 1rem; border-radius: 16px; }
+  main.content { padding: 2rem 16px 3rem; }
   h2 { font-size: 1.5rem; }
 }
+
+/* Reference layout: compact hierarchy and distinct request signatures. */
+#title-block-header .title {
+  font-size: clamp(2.4rem, 5vw, 3.75rem);
+  line-height: 1.1;
+}
+h2 { padding-top: 0.5rem; scroll-margin-top: 2rem; }
+h3 { margin-top: 2rem; font-size: 1.25rem; }
+h4 { margin-top: 1.5rem; font-size: 1rem; }
+.api-base-url {
+  margin: 1.5rem 0 2rem;
+  padding: 1.25rem 1.5rem;
+  background: #f8f9fa;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.api-label {
+  color: var(--muted);
+  font: 700 0.75rem "Mulish", sans-serif;
+  letter-spacing: 0.08em;
+}
+.api-base-url p:last-child { margin-bottom: 0; }
+.endpoint-signature {
+  margin: 1.25rem 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  background: #f8f9fa;
+}
+.endpoint-signature p { margin: 0; }
+.endpoint-signature code { background: transparent; }
+.http-method {
+  display: inline-block;
+  margin-right: 0.75rem;
+  color: #226ca4;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.table { width: 100%; line-height: 1.65; }
+.table th { font-weight: 700; }
+.table th, .table td { padding: 0.75rem 0.85rem; vertical-align: top; }
+.table td:first-child { min-width: 9rem; }
+.panel-tabset { margin: 1rem 0 2rem; }
+.panel-tabset .nav-link { font-size: 0.9rem; font-weight: 700; }
+.panel-tabset .nav-link.active { color: #226ca4; }
+.panel-tabset .tab-content { padding: 1rem; border-color: var(--border); }
+.callout { margin: 1.5rem 0; font-size: 0.95rem; }
+#TOC { font-size: 0.85rem; }

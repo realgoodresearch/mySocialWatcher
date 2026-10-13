@@ -29,20 +29,25 @@ def page_not_found(e):
     return f"<h1>404 Error</h1><p>The resource could not be found. {e}</p>", 404
 
 
-@app.route("/")
+api_name = "/socialwatcher"
+api_version = "/v1"
+
+api_root = api_name + api_version
+
+
+@app.route(api_root)
 def home():
     return current_app.send_static_file("docs.html")
 
 
-@app.route("/social_media_audience/query", methods=["GET", "POST"])
-@app.route("/query", methods=["GET", "POST"])
+@app.route(api_root + "/query", methods=["GET", "POST"])
 def query_route():
     """API endpoint to select data from the 'social_media_audience' database."""
     args = dict(request.args)
     if len(args) == 0:
         return (
             "<h1>400 Error</h1><p>Bad Request: This API endpoint requires arguments. "
-            "See <a href='./../'>API documentation</a> for more information.",
+            f"See <a href='{api_root}'>API documentation</a> for more information.</p>",
             400,
         )
     else:
@@ -50,15 +55,14 @@ def query_route():
         return jsonify(result), result.get("status")
 
 
-@app.route("/social_media_audience/query_clean", methods=["GET", "POST"])
-@app.route("/query_clean", methods=["GET", "POST"])
+@app.route(api_root + "/query_clean", methods=["GET", "POST"])
 def query_clean_route():
     """API endpoint to select data from the 'social_media_audience' database."""
     args = dict(request.args)
     if len(args) == 0:
         return (
             "<h1>400 Error</h1><p>Bad Request: This API endpoint requires arguments. "
-            "See <a href='./../'>API documentation</a> for more information.",
+            f"See <a href='{api_root}'>API documentation</a> for more information.</p>",
             400,
         )
     else:
@@ -66,8 +70,7 @@ def query_clean_route():
         return jsonify(result), result.get("status")
 
 
-@app.route("/social_media_audience/write", methods=["GET", "POST"])
-@app.route("/write", methods=["GET", "POST"])
+@app.route(api_root + "/write", methods=["GET", "POST"])
 @limiter.exempt()
 def write_route():
     """API endpoint to insert data into the 'social_media_audience' database."""
@@ -80,7 +83,7 @@ def write_route():
     if len(args) == 0:
         return (
             "<h1>400 Error</h1><p>Bad Request: This API endpoint requires arguments. "
-            "See <a href='./../'>API documentation</a> for more information.",
+            f"See <a href='{api_root}'>API documentation</a> for more information.</p>",
             400,
         )
     else:
@@ -92,15 +95,14 @@ def write_route():
         return jsonify(result), result.get("status")
 
 
-@app.route("/social_media_audience/list_collections", methods=["GET", "POST"])
-@app.route("/list_collections", methods=["GET", "POST"])
+@app.route(api_root + "/list_collections", methods=["GET", "POST"])
 def collections_route():
     """API endpoint to query a complete list of collection names."""
     args = dict(request.args)
     if len(args) == 0:
         return (
             "<h1>400 Error</h1><p>Bad Request: This API endpoint requires arguments. "
-            "See <a href='./../'>API documentation</a> for more information.",
+            f"See <a href='{api_root}'>API documentation</a> for more information.</p>",
             400,
         )
     else:
@@ -108,15 +110,14 @@ def collections_route():
         return jsonify(result), result.get("status")
 
 
-@app.route("/social_media_audience/monitor_collections", methods=["GET", "POST"])
-@app.route("/monitor_collections", methods=["GET", "POST"])
+@app.route(api_root + "/monitor_collections", methods=["GET", "POST"])
 def monitor_collections_route():
     """API endpoint to monitor collections."""
     args = dict(request.args)
     if len(args) == 0:
         return (
             "<h1>400 Error</h1><p>Bad Request: This API endpoint requires arguments. "
-            "See <a href='./../'>API documentation</a> for more information.",
+            f"See <a href='{api_root}'>API documentation</a> for more information.</p>",
             400,
         )
     else:
@@ -124,15 +125,14 @@ def monitor_collections_route():
         return jsonify(result), result.get("status")
 
 
-@app.route("/social_media_audience/data_overview", methods=["GET", "POST"])
-@app.route("/data_overview", methods=["GET", "POST"])
+@app.route(api_root + "/data_overview", methods=["GET", "POST"])
 def data_overview_route():
     """API endpoint to monitor collections."""
     args = dict(request.args)
     if len(args) == 0:
         return (
             "<h1>400 Error</h1><p>Bad Request: This API endpoint requires arguments. "
-            "See <a href='./../'>API documentation</a> for more information.",
+            f"See <a href='{api_root}'>API documentation</a> for more information.</p>",
             400,
         )
     else:

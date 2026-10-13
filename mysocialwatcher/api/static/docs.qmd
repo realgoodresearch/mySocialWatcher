@@ -4,19 +4,20 @@ subtitle: "Social media audience research · API documentation"
 lang: en
 format:
   html:
-    theme: darkly
+    theme: cosmo
     css: docs.css
     toc: true
     toc-title: "On this page"
     toc-depth: 2
-    toc-expand: true
+    toc-expand: 1
     toc-location: left
     embed-resources: true
     code-copy: true
     anchor-sections: true
-    highlight-style: github-dark
+    highlight-style: github
+    smooth-scroll: true
     title-block-banner: false
-api-root: "http://api.realgoodresearch.com/socialwatcher/v1/"
+api-root: "https://api.realgoodresearch.com/socialwatcher/v1/"
 sysadmin_email: "doug@realgoodresearch.com"
 engine: markdown
 ---
@@ -25,88 +26,91 @@ engine: markdown
      quarto render mysocialwatcher/api/static/docs.qmd
      API examples are printed as text, never executed. -->
 
-# Social Media Audience
+## Overview
 
-API root: `{{< meta api-root >}}`
+Query social media audience estimates by location, date, and demographic group,
+or contribute new collections to the database.
 
-All endpoint URLs and examples below use this API root.
+::: {.api-base-url}
+[BASE URL]{.api-label}
 
+`{{< meta api-root >}}`
+:::
 
-The API endpoints located at `{{< meta api-root >}}[endpoint]` 
-provide access to the LCDS database containing counts of social media users for 
-specific locations, time periods, and demographic groups. This API requires 
-approved credentials for access.  
+### Access
 
-**Note:** By accessing any Meta Platform Data returned by this API, you are agreeing to comply with 
-<a href="https://developers.facebook.com/terms" target="_blank">Meta's Platform Terms</a>.
+Protected endpoints require an API token. To request credentials, contact
+[{{< meta sysadmin_email >}}](mailto:{{< meta sysadmin_email >}}).
+Read requests pass parameters in the query string; writing data requires a token
+with write access. The examples below use placeholder tokens.
 
-## Overview of all endpoints
+::: {.callout-note title="Data use"}
+By accessing Meta Platform Data returned by this API, you agree to comply with
+[Meta's Platform Terms](https://developers.facebook.com/terms).
+:::
 
-**{{< meta api-root >}}query**  
-Returns social media audience estimates in raw data format (i.e. from pySocialWatcher) for specific locations, dates, and demographic groups.
+### Endpoints
 
-**{{< meta api-root >}}query_clean**  
-Returns social media audience estimates in a cleaned format for specific locations, dates, and demographic groups.
+Endpoint | Purpose
+:-- | :--
+[`/query`](#endpoint-query) | Retrieve raw audience estimates.
+[`/query_clean`](#endpoint-query_clean) | Retrieve cleaned estimates, with optional geometry.
+[`/list_collections`](#endpoint-list_collections) | List collections available to your account.
+[`/monitor_collections`](#endpoint-monitor_collections) | Monitor recent collection activity.
+[`/data_overview`](#endpoint-data_overview) | Summarize data for a country and date range.
+[`/write`](#endpoint-write) | Submit audience estimates with write credentials.
 
-**{{< meta api-root >}}list_collections**  
-List all collection names that you have permission to access.
+## Endpoint: query {#endpoint-query}
 
-**{{< meta api-root >}}monitor_collections**  
-Get summary statistics for recent data from your collections.
+This API endpoint is for querying data from *social_media_audience* database.
+You can use it to pull a subset of data directly into R or Python (examples below).
 
-**{{< meta api-root >}}write**  
-Write new data into the database (requires authentication with write-access).
-
-
-## Endpoint: query
-
-This API endpoint is for querying data from *social_media_audience* database. 
-You can use it to pull a subset of data directly into R or Python (examples below).  
-
-**Note:** If your query results exceed 100,000 rows, then only the first 100,000 
-will be returned along with a status code of 206 (partial content) rather than a 
+::: {.callout-note}
+If your query results exceed 100,000 rows, then only the first 100,000
+will be returned along with a status code of 206 (partial content) rather than a
 success code (200).
+:::
 
-URL: `{{< meta api-root >}}query`  
+::: {.endpoint-signature}
+[GET · POST]{.http-method} `/socialwatcher/v1/query`
+:::
 
-Arguments syntax: `{{< meta api-root >}}query?argument1=value1&argument2=value2`  
 
+### Parameters
 
-**API Arguments**  
-
-*Required Arguments*  
+#### Required
 
 Argument | Description
 |:-- |:-----------
-token | API token for read access (contact [{{< meta sysadmin_email >}}](mailto:{{< meta sysadmin_email >}}))
-platform | Name of platform where data were collected. Acceptable values: facebook, instagram
+`token` | API token for read access (contact [{{< meta sysadmin_email >}}](mailto:{{< meta sysadmin_email >}}))
+`platform` | Name of platform where data were collected. Acceptable values: facebook, instagram
 
-*Optional Arguments*  
+#### Optional
 
-Argument | Description 
-|:-- |:----------- 
-country | A single country code using ISO-2 format (see <a href="https://www.iban.com/country-codes">https://www.iban.com/country-codes</a>). If omitted, all countries will be returned, but please note that this may result in longer processing time.
-gender | Gender of the population represented by data. Acceptable values: 0, 1, 2, where 0=all, 1=male, 2=female.
-age_min | Lower bound of age of the audience size reported. Default = 0.
-age_max | Upper bound of age of the audience size reported. Default = 999.
-date_start | Earliest date to include in the query result
-date_end | Latest date to include in the query result
-collection | The name of a collection from which you would like to return data. The names of all collections can be obtained from the [collections endpoint](#endpoint-list_collections).
-contributor_id | ID number of contributor whose data you would like to return
-valid | Return only data marked as valid by contributors? Default = true. Acceptable values: true, t, yes, y, on, 1. All other values will be treated as: false.
+Argument | Description
+|:-- |:-----------
+`country` | A single country code using ISO-2 format (see <a href="https://www.iban.com/country-codes">https://www.iban.com/country-codes</a>). If omitted, all countries will be returned, but please note that this may result in longer processing time.
+`gender` | Gender of the population represented by data. Acceptable values: 0, 1, 2, where 0=all, 1=male, 2=female.
+`age_min` | Lower bound of age of the audience size reported. Default = 0.
+`age_max` | Upper bound of age of the audience size reported. Default = 999.
+`date_start` | Earliest date to include in the query result
+`date_end` | Latest date to include in the query result
+`collection` | The name of a collection from which you would like to return data. The names of all collections can be obtained from the [collections endpoint](#endpoint-list_collections).
+`contributor_id` | ID number of contributor whose data you would like to return
+`valid` | Return only data marked as valid by contributors? Default = true. Acceptable values: true, t, yes, y, on, 1. All other values will be treated as: false.
 
-**API Response**  
-The API will return a json response with four elements:
+### Response
+The API will return a JSON response with four elements:
 
-Element | Description 
-|:-- |:----------- 
-status | http status code
-message | Message describing outcome of operation writing to the database
-timestamp | Date and time of response
-data | Data resulting from query in json format
+Element | Description
+|:-- |:-----------
+`status` | HTTP status code
+`message` | Description of the operation’s outcome
+`timestamp` | Date and time of response
+`data` | Data resulting from query in json format
 
-For example:
-```
+Example response (abbreviated):
+```text
 {
   "message": "OK: Data successfully selected from database.",
   "status": "200",
@@ -115,16 +119,19 @@ For example:
 }
 ```
 
-**Examples**
+### Examples
 
-*Query data using a url:*  
+::: {.panel-tabset}
+
+#### URL
 ```text
 {{< meta api-root >}}query?platform=facebook&country=GB&gender=0&date_start=2020-03-11&date_end=2020-03-12
 ```
 
-*Query data from Python:*  
+#### Python
 ```python
 # import packages
+import json
 import requests
 import pandas as pd
 
@@ -152,7 +159,7 @@ if response.get('status') == 200:
   data = pd.DataFrame(json.loads(response.get('data')))
 ```
 
-**Query data from R:**  
+#### R
 
 ```r
 # import packages
@@ -180,22 +187,22 @@ print(response$message)
 
 # extract data in various formats
 if(response$status == 200){
-  
+
   # json string
   data <- response$data
-  
+
   # json -> list of lists
   data <- jsonlite::fromJSON(data)
-  
+
   # list of lists -> data.frame with cells containing lists
   # note: this is a convenient format for dealing with JSONs for some data.frame cells in R.
   data <- as.data.frame(do.call(cbind, data))
-  
+
   #-- unlist data --#
-  
+
   # identify columns storing json objects
   json_cols <- c('geo_locations','all_fields','targeting','response')
-  
+
   # non-json cells: unlist
   for(name in names(data)[!names(data) %in% json_cols]){
     not_nulls <- which(!unlist(lapply(data[,name], is.null)))
@@ -203,7 +210,7 @@ if(response$status == 200){
     res[not_nulls] <- unlist(data[,name])
     data[,name] <- res
   }
-  
+
   # json cells: lists -> json strings
   for(name in json_cols){
     data[,name] <- unlist(lapply(data[,name], jsonlite::toJSON))
@@ -211,65 +218,68 @@ if(response$status == 200){
 }
 ```
 
+:::
 
-## Endpoint: query_clean
+## Endpoint: query_clean {#endpoint-query_clean}
 
-This API endpoint is for querying data from *social_media_audience* database. 
-It returns a cleaned version of the raw data, and you can optionally add spatial 
-geometries to the result. 
+This API endpoint is for querying data from *social_media_audience* database.
+It returns a cleaned version of the raw data, and you can optionally add spatial
+geometries to the result.
 
-**Note:** If your query results exceed 100,000 rows, then only the first 100,000 
-will be returned along with a status code of 206 (partial content) rather than a 
+::: {.callout-note}
+If your query results exceed 100,000 rows, then only the first 100,000
+will be returned along with a status code of 206 (partial content) rather than a
 success code (200).
+:::
 
-URL: `{{< meta api-root >}}query_clean`  
+::: {.endpoint-signature}
+[GET · POST]{.http-method} `/socialwatcher/v1/query_clean`
+:::
 
-Arguments syntax: `{{< meta api-root >}}query_clean?argument1=value1&argument2=value2`  
 
+### Parameters
 
-**API Arguments**  
-
-*Required Arguments*  
+#### Required
 
 Argument | Description
 |:-- |:-----------
-token | API token for read access (contact [{{< meta sysadmin_email >}}](mailto:{{< meta sysadmin_email >}}))
-platform | Name of platform where data were collected. Acceptable values: facebook, instagram
+`token` | API token for read access (contact [{{< meta sysadmin_email >}}](mailto:{{< meta sysadmin_email >}}))
+`platform` | Name of platform where data were collected. Acceptable values: facebook, instagram
 
-*Optional Arguments*  
+#### Optional
 
-Argument | Description 
-|:-- |:----------- 
-add_geometry | Attach geometries to the result as a geojson? Default = False. Acceptable values = True, False.
-country | A single country code using ISO-2 format (see <a href="https://www.iban.com/country-codes">https://www.iban.com/country-codes</a>). If omitted, all countries will be returned, but please note that this may result in longer processing time.
-gender | Gender of the population represented by data. Acceptable values: 0, 1, 2, where 0=all, 1=male, 2=female.
-age_min | Lower bound of age of the audience size reported. Default = 0.
-age_max | Upper bound of age of the audience size reported. Default = 999.
-date_start | Earliest date to include in the query result
-date_end | Latest date to include in the query result
-language_name | Return results that used the specified language name (from Meta) as a targeting parameter.
-language_key | Return results that used the specified language key (from Meta) as a targeting parameter.
-geo_level | Geographic level. Acceptable values: 'countries', 'regions', 'cities'
-geo_key | Geographic key (from Meta) for locations to return.
-geo_name | Name of geographies (from Meta) to return.
-location_types | Location types (from Meta). Acceptable values: '["home"]', '["recent"]', '["travel_in"]', '["home", "recent"]', or other combinations/orders. 
-collection | The name of a collection from which you would like to return data. The names of all collections can be obtained from the [collections endpoint](#endpoint-list_collections).
-contributor_id | ID number of contributor whose data you would like to return
-valid | Return only data marked as valid by contributors? Default = true. Acceptable values: true, t, yes, y, on, 1. All other values will be treated as: false.
+Argument | Description
+|:-- |:-----------
+`add_geometry` | Attach geometries to the result as a geojson? Default = False. Acceptable values = True, False.
+`country` | A single country code using ISO-2 format (see <a href="https://www.iban.com/country-codes">https://www.iban.com/country-codes</a>). If omitted, all countries will be returned, but please note that this may result in longer processing time.
+`gender` | Gender of the population represented by data. Acceptable values: 0, 1, 2, where 0=all, 1=male, 2=female.
+`age_min` | Lower bound of age of the audience size reported. Default = 0.
+`age_max` | Upper bound of age of the audience size reported. Default = 999.
+`date_start` | Earliest date to include in the query result
+`date_end` | Latest date to include in the query result
+`language_name` | Return results that used the specified language name (from Meta) as a targeting parameter.
+`language_key` | Return results that used the specified language key (from Meta) as a targeting parameter.
+`geo_level` | Geographic level. Acceptable values: 'countries', 'regions', 'cities'
+`geo_key` | Geographic key (from Meta) for locations to return.
+`geo_name` | Name of geographies (from Meta) to return.
+`location_types` | Location types (from Meta). Acceptable values: '["home"]', '["recent"]', '["travel_in"]', '["home", "recent"]', or other combinations/orders.
+`collection` | The name of a collection from which you would like to return data. The names of all collections can be obtained from the [collections endpoint](#endpoint-list_collections).
+`contributor_id` | ID number of contributor whose data you would like to return
+`valid` | Return only data marked as valid by contributors? Default = true. Acceptable values: true, t, yes, y, on, 1. All other values will be treated as: false.
 
-**API Response**  
-The API will return a json response with five elements:
+### Response
+The API will return a JSON response with five elements:
 
-Element | Description 
-|:-- |:----------- 
-status | http status code
-message | Message describing outcome of operation writing to the database
-timestamp | Date and time of response
-data | Data resulting from query in json format
-geodata | Geojson with spatial geometries corresponding to the locations in data
+Element | Description
+|:-- |:-----------
+`status` | HTTP status code
+`message` | Description of the operation’s outcome
+`timestamp` | Date and time of response
+`data` | Data resulting from query in json format
+`geodata` | Geojson with spatial geometries corresponding to the locations in data
 
-For example:
-```
+Example response (abbreviated):
+```text
 {
   "message": "OK: Data successfully selected from database.",
   "status": "200",
@@ -279,16 +289,19 @@ For example:
 }
 ```
 
-**Examples**
+### Examples
 
-*Query data using a url:*  
+::: {.panel-tabset}
+
+#### URL
 ```text
 {{< meta api-root >}}query_clean?platform=facebook&country=GB&gender=0&date_start=2020-03-11&date_end=2020-03-12
 ```
 
-*Query data from Python:*  
+#### Python
 ```python
 # import packages
+import json
 import requests
 import pandas as pd
 
@@ -316,7 +329,7 @@ if response.get('status') == 200:
   data = pd.DataFrame(json.loads(response.get('data')))
 ```
 
-**Query data from R:**  
+#### R
 
 ```r
 # import packages
@@ -344,17 +357,17 @@ print(response$message)
 
 # extract data in various formats
 if(response$status == 200){
-  
+
   # json string
   data <- response$data
-  
+
   # json -> list of lists
   data <- jsonlite::fromJSON(data)
-  
+
   # list of lists -> data.frame with cells containing lists
   # note: this is a convenient format for dealing with JSONs for some data.frame cells in R.
   data <- as.data.frame(do.call(cbind, data))
-  
+
   # unlist data
   for(name in names(data)){
     not_nulls <- which(!unlist(lapply(data[,name], is.null)))
@@ -365,43 +378,48 @@ if(response$status == 200){
 }
 ```
 
-## Endpoint: list_collections
+:::
 
-This API endpoint returns a list of all collection names that you currently have 
-access to in the *social_media_audience* database. 
+## Endpoint: list_collections {#endpoint-list_collections}
 
-URL: `{{< meta api-root >}}list_collections`  
+This API endpoint returns a list of all collection names that you currently have
+access to in the *social_media_audience* database.
 
-Arguments syntax: `{{< meta api-root >}}list_collections?token=12345`  
+::: {.endpoint-signature}
+[GET · POST]{.http-method} `/socialwatcher/v1/list_collections`
+:::
 
-**Note:** An API token is required to access this endpoint. Please contact [{{< meta sysadmin_email >}}](mailto:{{< meta sysadmin_email >}}) for more information.
+
+::: {.callout-note}
+An API token is required to access this endpoint. Please contact [{{< meta sysadmin_email >}}](mailto:{{< meta sysadmin_email >}}) for more information.
+:::
 
 
-**API Arguments**  
+### Parameters
 
-*Required Arguments*  
+#### Required
 
 Argument | Description
 |:-- |:-----------
-token | API access token (contact [{{< meta sysadmin_email >}}](mailto:{{< meta sysadmin_email >}}))
+`token` | API access token (contact [{{< meta sysadmin_email >}}](mailto:{{< meta sysadmin_email >}}))
 
 
-*Optional Arguments*  
+#### Optional
 
 None
 
-**API Response**  
-The API will return a json response with four elements:
+### Response
+The API will return a JSON response with four elements:
 
-Element | Description 
-|:-- |:----------- 
-status | http status code
-message | Message describing outcome of operation writing to the database
-timestamp | Date and time of response
-data | Data resulting from query in json format
+Element | Description
+|:-- |:-----------
+`status` | HTTP status code
+`message` | Description of the operation’s outcome
+`timestamp` | Date and time of response
+`data` | Data resulting from query in json format
 
-For example:
-```
+Example response (abbreviated):
+```text
 {
   "message": "OK: Collections successfully queried from database.",
   "status": "200",
@@ -411,47 +429,50 @@ For example:
 ```
 
 
-## Endpoint: monitor_collections
+## Endpoint: monitor_collections {#endpoint-monitor_collections}
 
-This API endpoint returns a count of new data for each of your collections that 
-were written into the database over the past several days. 
+This API endpoint returns a count of new data for each of your collections that
+were written into the database over the past several days.
 
-URL: `{{< meta api-root >}}monitor_collections`  
-
-Arguments syntax: `{{< meta api-root >}}monitor_collections?token=12345&days=3`  
-
-**Note:** An API token is required to access this endpoint. Please contact [{{< meta sysadmin_email >}}](mailto:{{< meta sysadmin_email >}}) for more information.
+::: {.endpoint-signature}
+[GET · POST]{.http-method} `/socialwatcher/v1/monitor_collections`
+:::
 
 
-**API Arguments**  
-
-*Required Arguments*  
-
-Argument | Description
-|:-- |:-----------
-token | API access token (contact [{{< meta sysadmin_email >}}](mailto:{{< meta sysadmin_email >}}))
+::: {.callout-note}
+An API token is required to access this endpoint. Please contact [{{< meta sysadmin_email >}}](mailto:{{< meta sysadmin_email >}}) for more information.
+:::
 
 
-*Optional Arguments*  
+### Parameters
+
+#### Required
 
 Argument | Description
 |:-- |:-----------
-days | (default=7) Number of prior days leading up to today to include with the monitoring summary.
-collections | List of collections to monitor. Format = ['my_collection1', 'my_collection2']. 
+`token` | API access token (contact [{{< meta sysadmin_email >}}](mailto:{{< meta sysadmin_email >}}))
+
+
+#### Optional
+
+Argument | Description
+|:-- |:-----------
+`days` | (default=7) Number of prior days leading up to today to include with the monitoring summary.
+`collections` | List of collections to monitor. Format = ['my_collection1', 'my_collection2'].
 Use [list_collections endpoint](#endpoint-list_collections) to see collections available to you.
 
-**API Response**  
-The API will return a json response with four elements:
+### Response
+The API will return a JSON response with four elements:
 
-Element | Description 
-|:-- |:----------- 
-status | http status code
-message | Message describing outcome of operation writing to the database
-timestamp | Date and time of response
-data | Data resulting from query in json format
+Element | Description
+|:-- |:-----------
+`status` | HTTP status code
+`message` | Description of the operation’s outcome
+`timestamp` | Date and time of response
+`data` | Data resulting from query in json format
 
-For example:
-```
+Example response (abbreviated):
+```text
 {
   "message": "OK: Your collections successfully queried.",
   "status": "200",
@@ -461,52 +482,52 @@ For example:
 ```
 
 
-## Endpoint: data_overview
+## Endpoint: data_overview {#endpoint-data_overview}
 
-This API endpoint returns an overview of all data in the database for a selected country. 
+This API endpoint returns an overview of all data in the database for a selected country.
 
-URL: `{{< meta api-root >}}data_overview`  
-
-Arguments syntax: `{{< meta api-root >}}data_overview?country=PS&date_start=2023-10-07&date_end=2023-10-20`  
-
-
-**API Arguments**  
-
-*Required Arguments*  
-
-Argument | Description
-|:-- |:-----------
-country | A single country code using ISO-2 format (see <a href="https://www.iban.com/country-codes">https://www.iban.com/country-codes</a>).
+::: {.endpoint-signature}
+[GET · POST]{.http-method} `/socialwatcher/v1/data_overview`
+:::
 
 
-*Require at least one of these arguments*  
+### Parameters
 
-Argument | Description 
-|:-- |:----------- 
-date_start | Daily active users
-date_end | Monthly active user
-
-
-*Optional Arguments*  
+#### Required
 
 Argument | Description
 |:-- |:-----------
-language_name | Return results that used the specified language name (from Meta) as a targeting parameter.
-geo_level | Geographic level. Acceptable values: 'countries', 'regions', 'cities'
-location_types | Location types (from Meta). Acceptable values: '["home"]', '["recent"]', '["travel_in"]', '["home", "recent"]', or other combinations/orders. 
+`country` | A single country code using ISO-2 format (see <a href="https://www.iban.com/country-codes">https://www.iban.com/country-codes</a>).
 
-**API Response**  
-The API will return a json response with four elements:
 
-Element | Description 
-|:-- |:----------- 
-status | http status code
-message | Message describing outcome of operation writing to the database
-timestamp | Date and time of response
-data | Data resulting from query in json format
+#### At least one required
 
-For example:
-```
+Argument | Description
+|:-- |:-----------
+`date_start` | Daily active users
+`date_end` | Monthly active user
+
+
+#### Optional
+
+Argument | Description
+|:-- |:-----------
+`language_name` | Return results that used the specified language name (from Meta) as a targeting parameter.
+`geo_level` | Geographic level. Acceptable values: 'countries', 'regions', 'cities'
+`location_types` | Location types (from Meta). Acceptable values: '["home"]', '["recent"]', '["travel_in"]', '["home", "recent"]', or other combinations/orders.
+
+### Response
+The API will return a JSON response with four elements:
+
+Element | Description
+|:-- |:-----------
+`status` | HTTP status code
+`message` | Description of the operation’s outcome
+`timestamp` | Date and time of response
+`data` | Data resulting from query in json format
+
+Example response (abbreviated):
+```text
 {
   "message": "OK: Your collections successfully queried.",
   "status": "200",
@@ -516,62 +537,65 @@ For example:
 ```
 
 
-## Endpoint: write
+## Endpoint: write {#endpoint-write}
 
-URL: `{{< meta api-root >}}write`  
+::: {.endpoint-signature}
+[GET · POST]{.http-method} `/socialwatcher/v1/write`
+:::
 
-Arguments syntax: `{{< meta api-root >}}write?argument1=value1&argument2=value2`  
 
-This API endpoint is for writing data into the *social_media_audience* database. 
-You can use it to write data into the database directly from R or Python (example below).  
+This API endpoint is for writing data into the *social_media_audience* database.
+You can use it to write data into the database directly from R or Python (example below).
 
-**Note:** An API token is required to access this endpoint. Please contact [{{< meta sysadmin_email >}}](mailto:{{< meta sysadmin_email >}}) for more information.
+::: {.callout-note}
+An API token is required to access this endpoint. Please contact [{{< meta sysadmin_email >}}](mailto:{{< meta sysadmin_email >}}) for more information.
+:::
 
-**API Arguments**  
+### Parameters
 
-*Required arguments*  
+#### Required
 
 Argument | Description
 |:-- |:-----------
-token | API token for write access (contact [{{< meta sysadmin_email >}}](mailto:{{< meta sysadmin_email >}})).
-valid | Indicates if data are valid. Invalid data will not persist in the database. Default="False". Acceptable values (not case sensitive): "true", "t", "y", "yes", "on", "1". All other values will be interpreted as "False".
-platform | Name of platform where data were collected. Acceptable values: "facebook", "instagram".
-timestamp | Timestamp in Unix epoch format (seconds since 1 JAN 1970 UTC) corresponding to the time of the original data collection.
-country | Country code of data collection using ISO-2 format (see <a href="https://www.iban.com/country-codes">https://www.iban.com/country-codes</a>).
-gender | Gender of the population represented by data. Acceptable values: "0", "1", "2", where 0=all, 1=male, 2=female.
-geo_locations | Definition of geolocation in json format. See docs for pySocialWatcher or Facebook Marketing API for more information.
+`token` | API token for write access (contact [{{< meta sysadmin_email >}}](mailto:{{< meta sysadmin_email >}})).
+`valid` | Indicates if data are valid. Invalid data will not persist in the database. Default="False". Acceptable values (not case sensitive): "true", "t", "y", "yes", "on", "1". All other values will be interpreted as "False".
+`platform` | Name of platform where data were collected. Acceptable values: "facebook", "instagram".
+`timestamp` | Timestamp in Unix epoch format (seconds since 1 JAN 1970 UTC) corresponding to the time of the original data collection.
+`country` | Country code of data collection using ISO-2 format (see <a href="https://www.iban.com/country-codes">https://www.iban.com/country-codes</a>).
+`gender` | Gender of the population represented by data. Acceptable values: "0", "1", "2", where 0=all, 1=male, 2=female.
+`geo_locations` | Definition of geolocation in json format. See docs for pySocialWatcher or Facebook Marketing API for more information.
 
-*Require at least one of these arguments*  
+#### At least one required
 
-Argument | Description 
-|:-- |:----------- 
-dau | Daily active users
-mau | Monthly active user
-mau_lower | Lower bound of monthly active users
-mau_upper | Upper bound of monthly active users
+Argument | Description
+|:-- |:-----------
+`dau` | Daily active users
+`mau` | Monthly active user
+`mau_lower` | Lower bound of monthly active users
+`mau_upper` | Upper bound of monthly active users
 
-*Optional arguments*  
+#### Optional
 
-Argument | Description 
-|:-- |:----------- 
-collection | (recommended) The name of the collection. This is will help filter results later. The [list_collections endpoint](#endpoint-list_collections) provides a list of existing collections names, or a new collection name can be created when writing new data. 
-all_fields | (recommended) All fields of special targeting audience specification. This is a default field returned from pySocialWatcher as a string representation of a Python tuple of tuples.
-targeting | (recommended) Audience targeting json as submitted to Facebook API. This is a default field returned from pySocialWatcher.
-response | (recommended) Response from Facebook API. This is a default field returned from pySocialWatcher as a string representation of a Python bytes array.
-age_min | (default = 0) Lower bound of age of the audience size reported. 
-age_max | (default = 999) Upper bound of age of the audence size reported. 
+Argument | Description
+|:-- |:-----------
+`collection` | (recommended) The name of the collection. This is will help filter results later. The [list_collections endpoint](#endpoint-list_collections) provides a list of existing collections names, or a new collection name can be created when writing new data.
+`all_fields` | (recommended) All fields of special targeting audience specification. This is a default field returned from pySocialWatcher as a string representation of a Python tuple of tuples.
+`targeting` | (recommended) Audience targeting json as submitted to Facebook API. This is a default field returned from pySocialWatcher.
+`response` | (recommended) Response from Facebook API. This is a default field returned from pySocialWatcher as a string representation of a Python bytes array.
+`age_min` | (default = 0) Lower bound of age of the audience size reported.
+`age_max` | (default = 999) Upper bound of age of the audence size reported.
 
-**API Response**  
-The API will return a json response with three elements:
+### Response
+The API will return a JSON response with three elements:
 
-Element | Description 
-|:-- |:----------- 
-status | http status code
-message | Message describing outcome of operation writing to the database
-timestamp | Date and time of response
+Element | Description
+|:-- |:-----------
+`status` | HTTP status code
+`message` | Description of the operation’s outcome
+`timestamp` | Date and time of response
 
-For example:  
-```
+Example response:
+```json
 {
   "message": "OK: Data successfully written to database.",
   "status": "200",
@@ -579,15 +603,17 @@ For example:
 }
 ```
 
-**Examples**  
+### Examples
 
-*Submit data as a url:*    
+::: {.panel-tabset}
+
+#### URL
 
 ```text
 {{< meta api-root >}}write?token=[your token]&valid=true&platform=facebook&timestamp=1640574003&country=GB&gender=0&dau=1000&geo_locations={'name': 'countries', 'values': ['GB'], 'location_types': ['home']}
 ```
 
-*Submit data from Python:*  
+#### Python
 
 ```python
 import requests
@@ -609,48 +635,8 @@ response = requests.get(url='{{< meta api-root >}}write', params=args)
 response.text
 ```
 
-**Note:** The `valid` argument will default to `false` if you do not explicitly set it to `true`. If `false`, the data you submit will be removed from the database at midnight. This is intended to allow for testing and to require data contributors to explicitly verify when valid data are being submitted that should be retained indefinitely.  
+:::
 
-## PostgreSQL
-
-In most cases, it is preferable to query the PostgreSQL server using the API 
-endpoints above, but it can be useful to connect directly to the SQL server (read-only) to:  
-
-1. Browse the database using a GUI like [DBeaver](https://dbeaver.io)  
-2. Submit advanced SQL queries not currently supported by the `/query` API endpoint (see [query section](#endpoint-query)).  
-
-**Note:** You must be connected to the University of Oxford VPN 
-(i.e. Cisco Anyconnect client) to connect directly to the database.
-
-**SQL Server Information**  
-
-Attribute | Value
-|:--|:-----|
-Hostname | 18.135.72.18
-Port | 5432
-Database | social_media_audience
-User | reader
-Password | [contact {{< meta sysadmin_email >}}]
-
-**Examples**  
-
-*SQL query from Python*  
-
-```
-# import packages
-import psycopg2
-import pandas as pd
-
-# connect to database
-conn = psycopg2.connect(host='18.135.72.18', database='social_media_audience', user='reader', password='#####')
-
-# SQL query
-sql_query = "SELECT * FROM facebook WHERE country = 'GB' AND platform = 'facebook' AND date = '2022-01-01'"
-
-# retrieve data as pandas dataframe
-data = pd.read_sql(sql_query, conn)
-```
-
-See this excellent [PostgreSQL Tutorial](https://www.postgresqltutorial.com/what-is-postgresql/) or the official [PostgreSQL documentation](https://www.postgresql.org/) for more information about syntax for advanced SQL queries. Of particular interest, may be [querying data stored in JSON format](https://www.postgresqltutorial.com/postgresql-json/) such as the specific social media audience targeting parameters found in the following columns in the *social_media_audience* database: *geo_locations*, *all_fields*, *targeting*, and *response*.
-
-See the [psycopg2 documentation](https://www.psycopg.org/docs/) for more information about the *psycopg2* Python module. Of particular interest may be using cursors rather than pandas (as the example above) to better handle large SQL results. See a basic example [here](https://www.psycopg.org/docs/usage.html)).
+::: {.callout-note}
+The `valid` argument will default to `false` if you do not explicitly set it to `true`. If `false`, the data you submit will be removed from the database at midnight. This is intended to allow for testing and to require data contributors to explicitly verify when valid data are being submitted that should be retained indefinitely.
+:::
