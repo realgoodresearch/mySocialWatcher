@@ -16,3 +16,5 @@ services:
     deploy:
       mode: replicated
       replicas: ${CRAWLER_REPLICAS}
+    environment:
+      PYTHONUNBUFFERED: "1"

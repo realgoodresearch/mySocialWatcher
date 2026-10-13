@@ -191,7 +191,7 @@ def check_args(args, required=[], required_oneof=[], optional=[]):
 
     # compare country to geo_locations
     if status == 200 and 'geo_locations' in args.keys():
-        geo_locations = literal_eval(args.get('geo_locations'))
+        geo_locations = json.loads(args.get('geo_locations'))
 
         countries = countries_from_geo_locations(geo_locations)
         if len(countries) == 0:

@@ -142,8 +142,8 @@ def query(args):
 
         except Exception as e:
             exc = e.__dict__
-            status = exc.get("code")
-            message = exc.get("orig")
+            status = 500
+            message = str(exc.get("orig") or e)
 
     if db:
         db.dispose()
@@ -327,8 +327,8 @@ def query_clean(args):
 
         except Exception as e:
             exc = e.__dict__
-            status = exc.get("code")
-            message = exc.get("orig")
+            status = 500
+            message = str(exc.get("orig") or e)
 
     if db:
         db.dispose()
@@ -450,7 +450,7 @@ def write(args):
                         + ") Conflict: Data already in database with UNIQUE constraint. "
                     )
                 else:
-                    status = e.code
+                    status = 500  # SQLAlchemy error codes are not HTTP status codes.
                     message = e._message()
 
         if status == 200 and "invalid" in table:
@@ -514,7 +514,7 @@ def collections(args):
             message = "OK: Your collections successfully queried."
 
         except sqlalchemy.exc.SQLAlchemyError as e:
-            status = e.code
+            status = 500  # SQLAlchemy error codes are not HTTP status codes.
             message = e._message()
 
     if db:
@@ -639,7 +639,7 @@ def monitor(args):
             message = "OK: Your collections successfully queried."
 
         except sqlalchemy.exc.SQLAlchemyError as e:
-            status = e.code
+            status = 500  # SQLAlchemy error codes are not HTTP status codes.
             message = e._message()
 
     if db:
@@ -725,7 +725,7 @@ def data_overview(args):
             message = "OK: Your data overview was successfully queried."
 
         except sqlalchemy.exc.SQLAlchemyError as e:
-            status = e.code
+            status = 500  # SQLAlchemy error codes are not HTTP status codes.
             message = e._message()
 
     if db:
