@@ -24,7 +24,7 @@ DATA_CRAWLER_DIR="$REPO_DIR/data/crawler"
 # ——— STEP 1: stop existing crawlers ———
 echo ">>> Stopping any running crawler containers…"
 pushd "$DOCKER_CRAWLER_DIR" >/dev/null
-docker compose stop
+docker compose -f docker-compose-withreplicas.yml stop
 
 # ——— STEP 2: cleanup temp files ———
 echo ">>> Removing temporary crawler files (*.temp.txt)…"

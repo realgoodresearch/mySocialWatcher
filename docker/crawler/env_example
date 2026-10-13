@@ -1,3 +1,8 @@
 DATA_DIR=data
+# Optional: set these to the data owner's `id -u` and `id -g` on the host.
+# Standard Compose files default to 1000:1000; the GVFS migration variant
+# defaults to 1002:1002. Uncomment and adjust for a different host account.
+# CRAWLER_UID=1000
+# CRAWLER_GID=1000
 API_TOKEN=qwertyuiop1234567890asdfghjklzxcvbnm
 API_URL="http://localhost/api/v1/write"
