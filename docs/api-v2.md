@@ -83,4 +83,20 @@ The complete crawler lifecycle was also exercised against copied data. A restart
 
 Deployment requires a new v2 container on port 8001 and an explicit database URL. It does not require a database migration. Reverse-proxy routing and live crawler settings are separate production changes and are intentionally absent from this branch's development workflow.
 
+The v2 service is part of the existing datahub Compose stack. Build and start that service explicitly so Compose does not recreate the running v1 services:
+
+```bash
+docker compose -f docker/datahub/docker-compose.yml up -d --build --wait --no-deps datahub_api_v2
+curl --fail http://127.0.0.1:8001/socialwatcher/v2/health
+```
+
+It reads the existing database environment, shares the datahub network, and binds port 8001 only on localhost. It does not add nginx routing or change crawler settings.
+
 Rollback is to set crawlers back to `API_MODE=v1` with the v1 URL, then stop the v2 container. V1 data and completion logs remain compatible because v2 writes to the existing tables and emits the same three crawler log columns.
+
+Before any crawler has been switched, rollback consists only of removing v2:
+
+```bash
+docker compose -f docker/datahub/docker-compose.yml stop datahub_api_v2
+docker compose -f docker/datahub/docker-compose.yml rm -f datahub_api_v2
+```

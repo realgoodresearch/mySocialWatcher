@@ -19,7 +19,7 @@ from sqlalchemy import (
     select,
 )
 from sqlalchemy.dialects.postgresql import JSONB, insert
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine, URL
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
 from mysocialwatcher.api_v2.validation import NormalizedRow
@@ -81,7 +81,20 @@ AUDIENCE_TABLES = {
 def engine_from_environment() -> Engine:
     url = os.environ.get("SOCIALWATCHER_V2_DATABASE_URL")
     if not url:
-        raise RuntimeError("SOCIALWATCHER_V2_DATABASE_URL is required")
+        settings = {
+            "username": "writer",
+            "password": os.environ.get("POSTGRES_WPASS"),
+            "host": os.environ.get("POSTGRES_HOST"),
+            "port": os.environ.get("POSTGRES_PORT"),
+            "database": os.environ.get("POSTGRES_DB"),
+        }
+        missing = [key for key, value in settings.items() if value is None]
+        if missing:
+            raise RuntimeError(
+                "SOCIALWATCHER_V2_DATABASE_URL or PostgreSQL settings are required; "
+                f"missing: {', '.join(missing)}"
+            )
+        url = URL.create("postgresql+psycopg", **settings)
     return create_engine(
         url,
         pool_size=3,
