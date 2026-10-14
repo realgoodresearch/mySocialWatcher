@@ -54,7 +54,7 @@ def main(argv=None):
     parser.add_argument("--limit", type=int, help="stop after this many failed or corrupt logs, newest first (default: unlimited)")
     parser.add_argument("--ignore-status", type=int, nargs='+', help="ignore these HTTP statuses (e.g. --ignore-status 400 401); corrupt logs still qualify")
     parser.add_argument("--max-age-days", type=int, help="only inspect logs modified within this many days")
-    parser.add_argument("--quarantine-dir", type=Path, help="archive directory outside data/ (default: sibling of data/ named crawler-log-quarantine)")
+    parser.add_argument("--quarantine-dir", type=Path, help="archive directory outside data/ (default: crawler-recovery/log-quarantine)")
     args = parser.parse_args(argv)
     if args.max_age_days is not None and args.max_age_days < 1:
         parser.error("--max-age-days must be a positive integer")
@@ -65,7 +65,7 @@ def main(argv=None):
     root = args.crawler_dir.resolve()
     if not root.is_dir():
         parser.error(f"not a directory: {root}")
-    archive = (args.quarantine_dir or root.parent.parent / "crawler-log-quarantine").resolve()
+    archive = (args.quarantine_dir or root.parent.parent / "crawler-recovery" / "log-quarantine").resolve()
     if archive == root.parent or root.parent in archive.parents:
         parser.error("quarantine directory must be outside the crawler's parent data directory")
 

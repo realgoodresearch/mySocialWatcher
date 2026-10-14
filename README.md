@@ -89,6 +89,27 @@ bash utils/daily_crawl_nosync.sh "$PWD"
 
 Both scripts require the repository path as their argument. The synchronisation script excludes directories named `logs` at any depth. `logs_cleanup.sh` only manages collector `*.log` and `*.log.gz` files beneath those `logs` directories; it does not remove crawler completion logs such as `*_log.csv.gz`.
 
+#### Reporting historical failures
+
+`report_crawler_failures.py` scans crawler logs without changing them. It summarizes status codes and common failure categories, including invalid JSON, missing MAU values, missing database partitions, authentication failures, and database connection failures.
+
+Run it across all available crawler logs:
+
+```bash
+python3 utils/report_crawler_failures.py data/crawler
+```
+
+Use UTC modification-time boundaries to inspect a calendar period. The lower boundary is inclusive and the upper boundary is exclusive:
+
+```bash
+python3 utils/report_crawler_failures.py data/crawler \
+  --modified-after 2026-01-01 \
+  --modified-before 2026-04-01 \
+  --output crawler-recovery/reports/crawler-failures-2026-Q1.csv
+```
+
+The CSV groups failures by log modification year, collection path, status, and error category. It includes affected row and file counts plus one sample message. `--top N` controls how many categories are printed in the terminal. A nonzero exit status indicates that corrupt or unreadable logs were encountered; those logs can be handled with the quarantine utility below.
+
 #### Quarantining complete failed logs
 
 `quarantine_crawler_logs.py` finds completion logs containing non-2xx responses other than the expected `409 Conflict`. Moving a completion log causes the normal crawler to process the entire original source file again. This is appropriate for corrupt logs or files for which every row should be retried.
@@ -112,7 +133,7 @@ python3 utils/quarantine_crawler_logs.py data/crawler \
   --move
 ```
 
-Moved logs retain their relative paths under a timestamped directory in `crawler-log-quarantine/`. Source CSV files are not moved. Corrupt logs qualify regardless of ignored statuses because their row results cannot be trusted.
+Moved logs retain their relative paths under a timestamped directory in `crawler-recovery/log-quarantine/`. Source CSV files are not moved. Corrupt logs qualify regardless of ignored statuses because their row results cannot be trusted.
 
 #### Extracting only failed rows
 
@@ -137,20 +158,24 @@ python3 utils/extract_failed_crawler_rows.py data \
   --write
 ```
 
-The command prints a `Retry data root` beneath `crawler-retry-data/`. Each batch mirrors the source directory layout and includes `manifest.jsonl`, which maps retry rows to their original source paths and row positions. Other useful filters are:
+The command prints a `Retry data root` beneath `crawler-recovery/retry-data/`. Each batch mirrors the source directory layout and includes `manifest.jsonl`, which maps retry rows to their original source paths and row positions. Other useful filters are:
 
 - `--status 500 502 503 504` to include only listed statuses.
 - `--ignore-status 400 401` to exclude listed statuses.
 - `--message-contains TEXT` to match an API error message; repeat the option to accept alternative messages.
 - `--limit N` to stop after selecting N source files, newest first.
 - `--max-age-days N` to filter by crawler-log modification time, not the collection date in a filename.
+- `--modified-after DATETIME` to include logs at or after a UTC boundary.
+- `--modified-before DATETIME` to include logs before a UTC boundary.
+
+Date boundaries accept `YYYY-MM-DD` or ISO 8601 timestamps. They can be used to create non-overlapping monthly or quarterly historical recovery batches. If age and date filters are combined, a log must satisfy all of them.
 
 #### Crawling an isolated retry batch
 
 Keep the normal crawlers stopped while running a controlled recovery. Set the batch path printed by the extraction utility and obtain the existing crawler image:
 
 ```bash
-RETRY_DIR=/absolute/path/to/crawler-retry-data/<batch-name>
+RETRY_DIR=/absolute/path/to/crawler-recovery/retry-data/<batch-name>
 CRAWLER_IMAGE=$(docker compose \
   -f docker/crawler/docker-compose-withreplicas.yml \
   images -q crawler)
@@ -193,10 +218,42 @@ If the utility selects nothing, every retry row returned a successful 2xx respon
 Original completion logs remain unchanged after row-level recovery. `update_crawler_recovery_ledger.py` maps successful retry results back to their original source rows so later extraction runs do not select them again:
 
 ```bash
-python3 utils/update_crawler_recovery_ledger.py crawler-retry-data
+python3 utils/update_crawler_recovery_ledger.py crawler-recovery/retry-data
 ```
 
-The command creates or updates `crawler-retry-data/recovery-ledger.jsonl`. Only retry results with a 2xx or `409` status are recorded; failed and incomplete retries remain eligible for extraction. The operation is idempotent, and `extract_failed_crawler_rows.py` consults this ledger automatically. Keep completed retry batches as the detailed audit trail. Run the ledger update after every retry batch before performing another extraction.
+The command creates or updates `crawler-recovery/retry-data/recovery-ledger.jsonl`. Only retry results with a 2xx or `409` status are recorded; failed and incomplete retries remain eligible for extraction. The operation is idempotent, and `extract_failed_crawler_rows.py` consults this ledger automatically. Keep completed retry batches as the detailed audit trail. Run the ledger update after every retry batch before performing another extraction.
+
+#### Archiving successful source and log pairs
+
+`archive_successful_crawler_files.py` identifies source files whose crawler logs are complete and contain only:
+
+- `200` successful writes;
+- `409` rows already present in the database;
+- the intentional `400` rejection for rows missing all MAU values; or
+- other failures whose original source rows are recorded as successfully recovered in the recovery ledger.
+
+The utility validates that the source and log have the same number of rows. Its default is a read-only preview, ordered from the oldest log to the newest:
+
+```bash
+python3 utils/archive_successful_crawler_files.py \
+  data /mnt/cold-storage/mySocialWatcher \
+  --min-age-days 90 \
+  --limit 100
+```
+
+Stop the crawlers, mount the external drive, verify the preview, and add `--move`:
+
+```bash
+python3 utils/archive_successful_crawler_files.py \
+  data /mnt/cold-storage/mySocialWatcher \
+  --min-age-days 90 \
+  --limit 100 \
+  --move
+```
+
+The cold-storage root must already exist when using `--move`; this prevents an unmounted drive path from being created on local storage. Each source and log is copied and SHA-256 verified before either hot copy is removed. Existing files are never overwritten. The archive retains the original layout beneath `COLD_STORAGE/data/` and writes checksums and row counts to `COLD_STORAGE/transfer-manifest.jsonl`.
+
+Use `--modified-after` and `--modified-before` for bounded archive periods. Additional acceptable `400` messages can be specified deliberately with repeated `--accept-400-message TEXT` options. The recovery ledger defaults to `crawler-recovery/retry-data/recovery-ledger.jsonl`; use `--ledger PATH` if it is stored elsewhere.
 
 # Contributing
 

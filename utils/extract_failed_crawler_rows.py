@@ -38,6 +38,18 @@ def integer(value):
         raise ValueError(f"invalid integer: {value!r}") from None
 
 
+def utc_timestamp(value):
+    try:
+        parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc).timestamp()
+    except (AttributeError, ValueError):
+        raise argparse.ArgumentTypeError(
+            f'invalid date/time {value!r}; use YYYY-MM-DD or ISO 8601'
+        ) from None
+
+
 def read_failures(path, statuses=None, ignore_statuses=None, message_contains=None):
     selected = {}
     total = 0
@@ -148,6 +160,10 @@ def main(argv=None):
     parser.add_argument('--write', action='store_true', help='write retry files and quarantine corrupt live logs; default is preview only')
     parser.add_argument('--limit', type=int, help='maximum selected files (row extractions plus corrupt logs), newest first')
     parser.add_argument('--max-age-days', type=int, help='only inspect logs modified within this many days')
+    parser.add_argument('--modified-after', type=utc_timestamp, metavar='DATETIME',
+                        help='include logs modified at or after this UTC date/time')
+    parser.add_argument('--modified-before', type=utc_timestamp, metavar='DATETIME',
+                        help='include logs modified before this UTC date/time')
     parser.add_argument('--status', type=int, nargs='+', help='only these error statuses, e.g. --status 500 502 503 504')
     parser.add_argument('--ignore-status', type=int, nargs='+', help='exclude these statuses; overrides --status (e.g. --ignore-status 400 401)')
     parser.add_argument('--message-contains', action='append', metavar='TEXT',
@@ -157,8 +173,9 @@ def main(argv=None):
     args = parser.parse_args(argv)
     data = args.data_dir.resolve()
     logs = (args.logs_dir or data / 'crawler').resolve()
-    output = (args.output_dir or data.parent / 'crawler-retry-data').resolve()
-    quarantine = (args.quarantine_dir or data.parent / 'crawler-log-quarantine').resolve()
+    recovery = data.parent / 'crawler-recovery'
+    output = (args.output_dir or recovery / 'retry-data').resolve()
+    quarantine = (args.quarantine_dir or recovery / 'log-quarantine').resolve()
     ledger = (args.ledger or output / 'recovery-ledger.jsonl').resolve()
     if not data.is_dir() or not logs.is_dir():
         parser.error('data and log roots must exist')
@@ -166,6 +183,9 @@ def main(argv=None):
         parser.error('--limit must be positive')
     if args.max_age_days is not None and args.max_age_days < 1:
         parser.error('--max-age-days must be positive')
+    if (args.modified_after is not None and args.modified_before is not None
+            and args.modified_after >= args.modified_before):
+        parser.error('--modified-after must be earlier than --modified-before')
     if args.status and any(s < 300 or s > 599 or s == 409 for s in args.status):
         parser.error('--status must contain error statuses (300-599, excluding 409)')
     if args.ignore_status and any(s < 100 or s > 599 for s in args.ignore_status):
@@ -189,7 +209,12 @@ def main(argv=None):
     paths = sorted(logs.rglob('*_log.csv.gz'), key=lambda p: (-p.lstat().st_mtime_ns, str(p)))
     cutoff = time.time() - args.max_age_days * 86400 if args.max_age_days else None
     for log in paths:
-        if cutoff is not None and log.lstat().st_mtime < cutoff:
+        modified = log.lstat().st_mtime
+        if cutoff is not None and modified < cutoff:
+            continue
+        if args.modified_after is not None and modified < args.modified_after:
+            continue
+        if args.modified_before is not None and modified >= args.modified_before:
             continue
         scanned += 1
         relative = log.relative_to(logs)

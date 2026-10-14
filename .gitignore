@@ -47,5 +47,4 @@ mySocialWatcher.Rproj
 config/specs/examples/test.py
 config/specs/specs_explore/fb_gadm_match/gadm_fb_crosswalk.py
 
-/crawler-retry-data/
-/crawler-log-quarantine/
+/crawler-recovery/
