@@ -28,10 +28,10 @@ Branch: `feat/fastapi-v2-ingestion`
 - [x] Implement pure row normalization and validation with regression tests.
 - [x] Implement isolated authentication and bulk database layer.
 - [x] Add disposable PostgreSQL integration environment and tests.
-- [ ] Add standalone batch client and equivalence fixtures.
-- [ ] Add opt-in crawler integration.
-- [ ] Benchmark one and four isolated clients.
-- [ ] Document future deployment and rollback without applying them.
+- [x] Add standalone batch client and equivalence fixtures.
+- [x] Add opt-in crawler integration.
+- [x] Benchmark one and four isolated clients.
+- [x] Document future deployment and rollback without applying them.
 
 ## Validation record
 
@@ -42,7 +42,12 @@ Branch: `feat/fastapi-v2-ingestion`
 - HTTP smoke test on `127.0.0.1:8001`: health succeeded; a two-row batch inserted one row and returned one indexed 400; repeating it returned one duplicate.
 - The `socialwatcher_v2_test` containers, network, and volume were removed after testing.
 - Integration testing found that psycopg multi-row `rowcount` is `-1`; exact aggregate accounting now uses `INSERT ... ON CONFLICT DO NOTHING RETURNING 1`.
+- API/service/route unit suite: 13 passed; crawler batch/mode suite: 4 passed.
+- Recent source parse: 3,822/3,822 rows; disposable end-to-end insert and test log: 3,822 status 200.
+- A 399-row source with an existing all-200 v1 log parsed 399/399 for v2 with no client errors.
+- Synthetic batches of 500: 4,899 rows/s (one client), 5,550 rows/s (four clients), and 5,662 rows/s (four-client duplicate replay).
+- Post-benchmark idle memory snapshot: API 101.8 MiB; PostgreSQL 86.83 MiB.
 
 ## Next action
 
-Add the standalone CSV batch client and equivalence fixtures without writing live crawler logs.
+Review the completed branch and decide whether to prepare a separately approved production deployment.

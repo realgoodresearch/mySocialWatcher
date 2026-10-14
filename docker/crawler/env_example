@@ -6,3 +6,5 @@ DATA_DIR=data
 # CRAWLER_GID=1000
 API_TOKEN=qwertyuiop1234567890asdfghjklzxcvbnm
 API_URL="http://localhost/api/v1/write"
+API_MODE=v1
+API_BATCH_SIZE=500

@@ -9,6 +9,8 @@ from time import sleep
 import pandas as pd
 from ast import literal_eval
 
+from mysocialwatcher.crawler.batch import submit_dataframe_v2
+
 
 # def country_from_geo(geo):
 #
@@ -185,7 +187,8 @@ def governor(func, hours=1):
     return wrapper
 
 
-def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write'):
+def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
+            api_mode='v1', batch_size=500):
     # crawl_dir = 'data/_test'
 
     print('-----------------------------')
@@ -194,6 +197,8 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write'):
     data_dir = os.path.abspath(data_dir.rstrip('/'))
     crawl_dir = os.path.join(data_dir, 'crawler')
     os.makedirs(crawl_dir, exist_ok=True)
+    if api_mode not in {'v1', 'v2'}:
+        raise ValueError("API_MODE must be 'v1' or 'v2'")
 
     # file list
     file_list = []
@@ -240,12 +245,20 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write'):
                 collection_name = file.split('/')[-3].lstrip('_')
 
                 # write collection to SQL via API
-                response = psw_to_sql(
-                    df=df,
-                    collection_name=collection_name,
-                    url=url,
-                    token=token,
-                    valid=True)
+                if api_mode == 'v2':
+                    response = submit_dataframe_v2(
+                        dataframe=df,
+                        collection=collection_name,
+                        url=url,
+                        token=token,
+                        batch_size=batch_size)
+                else:
+                    response = psw_to_sql(
+                        df=df,
+                        collection_name=collection_name,
+                        url=url,
+                        token=token,
+                        valid=True)
 
                 # save API responses
                 response.to_csv(out_path)
