@@ -1,4 +1,5 @@
 import unittest
+from datetime import date
 
 from pydantic import ValidationError
 
@@ -30,7 +31,7 @@ class ValidationTests(unittest.TestCase):
         result = normalize_row(row())
         self.assertEqual(result.table, "facebook")
         self.assertEqual(result.country, "CI")
-        self.assertEqual(result.collection_date, "2024-08-01")
+        self.assertEqual(result.collection_date, date(2024, 8, 1))
         self.assertEqual(result.all_fields["place"], "Côte d'Ivoire")
 
     def test_geo_country_replaces_supplied_country(self):

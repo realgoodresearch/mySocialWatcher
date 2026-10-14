@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
@@ -36,7 +36,7 @@ class RowInput(BaseModel):
 class NormalizedRow(BaseModel):
     source_index: int
     table: Literal["facebook", "facebook_invalid", "instagram", "instagram_invalid"]
-    collection_date: str
+    collection_date: date
     country: str
     gender: int
     age_min: int

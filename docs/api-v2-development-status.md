@@ -26,8 +26,8 @@ Branch: `feat/fastapi-v2-ingestion`
 - [x] Record safety constraints and initial contract decisions.
 - [x] Scaffold FastAPI application and request/response schemas.
 - [x] Implement pure row normalization and validation with regression tests.
-- [ ] Implement isolated authentication and bulk database layer.
-- [ ] Add disposable PostgreSQL integration environment and tests.
+- [x] Implement isolated authentication and bulk database layer.
+- [x] Add disposable PostgreSQL integration environment and tests.
 - [ ] Add standalone batch client and equivalence fixtures.
 - [ ] Add opt-in crawler integration.
 - [ ] Benchmark one and four isolated clients.
@@ -38,7 +38,11 @@ Branch: `feat/fastapi-v2-ingestion`
 - Built isolated image `mysocialwatcher-api-v2-dev:local` without changing running containers.
 - `python -m unittest utils.tests.test_api_v2_validation`: 6 passed in the isolated image.
 - Host Python has no Pydantic installation; v2 tests intentionally run in the isolated image.
+- Unit and disposable PostgreSQL integration suite: 12 passed.
+- HTTP smoke test on `127.0.0.1:8001`: health succeeded; a two-row batch inserted one row and returned one indexed 400; repeating it returned one duplicate.
+- The `socialwatcher_v2_test` containers, network, and volume were removed after testing.
+- Integration testing found that psycopg multi-row `rowcount` is `-1`; exact aggregate accounting now uses `INSERT ... ON CONFLICT DO NOTHING RETURNING 1`.
 
 ## Next action
 
-Implement isolated authentication, collection registration, and bulk database transactions.
+Add the standalone CSV batch client and equivalence fixtures without writing live crawler logs.
