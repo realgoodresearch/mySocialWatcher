@@ -47,6 +47,14 @@ Branch: `feat/fastapi-v2-ingestion`
 - A 399-row source with an existing all-200 v1 log parsed 399/399 for v2 with no client errors.
 - Synthetic batches of 500: 4,899 rows/s (one client), 5,550 rows/s (four clients), and 5,662 rows/s (four-client duplicate replay).
 - Post-benchmark idle memory snapshot: API 101.8 MiB; PostgreSQL 86.83 MiB.
+- Full crawler lifecycle against copied data and the disposable database:
+  - one 399-row file produced one complete log, no stale markers, 342 valid rows, and 57 intentionally invalid rows;
+  - restarting skipped the completed file;
+  - removing the copied log replayed safely without increasing database counts;
+  - four synchronized replicas each claimed a different 3,822-row file and produced four complete logs with no stale markers;
+  - 16 missing-audience 400s in two additional files matched their existing v1 logs exactly;
+  - isolated API logs contained no server errors.
+- All crawler test containers, copied files, networks, and disposable volumes were removed after verification.
 
 ## Next action
 

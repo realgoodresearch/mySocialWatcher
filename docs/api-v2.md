@@ -77,6 +77,8 @@ An idle post-benchmark snapshot showed approximately 102 MiB for the API contain
 
 A recent 3,822-row source file completed end to end with 3,822 accepted rows in the disposable database. A separate 399-row file with an existing all-200 v1 log parsed into 399 v2 rows without client errors.
 
+The complete crawler lifecycle was also exercised against copied data. A restart skipped an existing completion log, and deleting only the copied log replayed the source without increasing database counts. In a synchronized test, four crawler containers each atomically claimed a different 3,822-row file; all four logs were complete and no temporary or error markers remained. Two other files produced the same 6 and 10 missing-audience 400s recorded by their existing v1 logs.
+
 ## Future deployment and rollback
 
 Deployment requires a new v2 container on port 8001 and an explicit database URL. It does not require a database migration. Reverse-proxy routing and live crawler settings are separate production changes and are intentionally absent from this branch's development workflow.
