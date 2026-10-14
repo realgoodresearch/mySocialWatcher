@@ -60,10 +60,49 @@ class ExtractionTests(unittest.TestCase):
         self.assertEqual(self.run_cli('--write', '--status', '400', '500', '--ignore-status', '400', '500'), 0)
         self.assertFalse((self.repo / 'crawler-retry-data').exists())
 
+    def test_message_filter_selects_only_matching_400_rows(self):
+        write_csv(self.log, [
+            ['', 'status_api', 'message_api'],
+            ['0', '200', 'OK'],
+            ['1', '400', "Bad Request: 'all_fields' is not a valid json."],
+            ['2', '409', 'Conflict'],
+            ['3', '400', "Bad Request: At least one MAU field is required."],
+        ])
+        self.assertEqual(self.run_cli(
+            '--write', '--status', '400',
+            '--message-contains', 'is not a valid json',
+        ), 0)
+        batch = next((self.repo / 'crawler-retry-data').iterdir())
+        with gzip.open(batch / self.relative, 'rt', newline='') as stream:
+            self.assertEqual(list(csv.reader(stream)), [self.source_rows[0], self.source_rows[2]])
+        manifest = json.loads((batch / 'manifest.jsonl').read_text())
+        self.assertEqual(manifest['original_row_indices'], [1])
+        self.assertEqual(manifest['message_contains'], ['is not a valid json'])
+
     def test_invalid_ignored_status(self):
         for status in ('99', '600', 'abc'):
             with self.assertRaises(SystemExit):
                 self.run_cli('--ignore-status', status)
+
+    def test_max_age_excludes_old_logs(self):
+        os.utime(self.log, (1, 1))
+        self.assertEqual(self.run_cli('--write', '--max-age-days', '1'), 0)
+        self.assertFalse((self.repo / 'crawler-retry-data').exists())
+
+    def test_ledger_skips_recovered_source_rows(self):
+        retry_root = self.repo / 'crawler-retry-data'
+        retry_root.mkdir()
+        ledger = retry_root / 'recovery-ledger.jsonl'
+        ledger.write_text(json.dumps({
+            'source': self.relative.as_posix(), 'row_index': 1,
+            'retry_status': 200, 'retry_batch': 'older',
+        }) + '\n')
+        self.assertEqual(self.run_cli('--write'), 0)
+        batch = next(path for path in retry_root.iterdir() if path.is_dir())
+        with gzip.open(batch / self.relative, 'rt', newline='') as stream:
+            self.assertEqual(list(csv.reader(stream)), [self.source_rows[0], self.source_rows[4]])
+        manifest = json.loads((batch / 'manifest.jsonl').read_text())
+        self.assertEqual(manifest['original_row_indices'], [3])
 
     def test_corrupt_logs_quarantined_for_full_retry(self):
         for payload in (b'not gzip', gzip.compress(b',status_api\n0,500\n2,400\n')):

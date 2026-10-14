@@ -65,9 +65,138 @@ Once running the API can be accessed from `https://localhost/api/v1` and the dat
 ### Crawlers
 The crawlers require an environment file to exist in `./docker/crawler/.env` to define a data directory and datahub API credentials.
 
-A single crawler can be launched by launched as a background process by executing `docker compose up -d` from `./docker/crawler/`. 
+A single crawler can be launched as a background process by executing `docker compose up -d` from `./docker/crawler/`.
 
-Many crawlers can be launched simultaneously using `docker compose -f docker-compose-with-replicas.yml up -d`. Be sure to edit `./docker/crawlers/docker-compose-with-replicas.yml` to define how many replica crawlers you want to launch. Crawlers will create temporary files in the appropriate sub-folder of `./data/crawler/` to indicate files that are currently being crawled for coordination across crawlers. If the processes are killed before finishing (e.g. reboot), then these temporary files need to be deleted or the files will never be recrawled. 
+Many crawlers can be launched simultaneously using `docker compose -f docker-compose-with-replicas.yml up -d`. Be sure to edit `./docker/crawler/docker-compose-with-replicas.yml` to define how many replica crawlers you want to launch. Crawlers will create temporary files in the appropriate sub-folder of `./data/crawler/` to indicate files that are currently being crawled for coordination across crawlers. If the processes are killed before finishing (e.g. reboot), then these temporary files need to be deleted or the files will never be recrawled.
+
+### Crawler operations and recovery
+
+Crawler completion logs under `data/crawler/` are part of the crawler's state. A completed log prevents the corresponding source file from being processed again, so these logs should not be deleted as routine cleanup. The utilities below either preserve these logs or move them deliberately to trigger recovery. Run commands from the repository root.
+
+#### Starting crawlers and cleaning temporary markers
+
+`daily_crawl.sh` synchronises collection data, stops the crawlers, removes stale `*temp.txt` claim files, and starts the configured replicas:
+
+```bash
+bash utils/daily_crawl.sh "$PWD"
+```
+
+Use `daily_crawl_nosync.sh` when the source data are already current and no `rsync` is needed:
+
+```bash
+bash utils/daily_crawl_nosync.sh "$PWD"
+```
+
+Both scripts require the repository path as their argument. The synchronisation script excludes directories named `logs` at any depth. `logs_cleanup.sh` only manages collector `*.log` and `*.log.gz` files beneath those `logs` directories; it does not remove crawler completion logs such as `*_log.csv.gz`.
+
+#### Quarantining complete failed logs
+
+`quarantine_crawler_logs.py` finds completion logs containing non-2xx responses other than the expected `409 Conflict`. Moving a completion log causes the normal crawler to process the entire original source file again. This is appropriate for corrupt logs or files for which every row should be retried.
+
+Preview recent candidates first:
+
+```bash
+python3 utils/quarantine_crawler_logs.py data/crawler \
+  --ignore-status 400 401 \
+  --max-age-days 30 \
+  --limit 100
+```
+
+Stop the crawlers before moving logs, then repeat with `--move`:
+
+```bash
+python3 utils/quarantine_crawler_logs.py data/crawler \
+  --ignore-status 400 401 \
+  --max-age-days 30 \
+  --limit 100 \
+  --move
+```
+
+Moved logs retain their relative paths under a timestamped directory in `crawler-log-quarantine/`. Source CSV files are not moved. Corrupt logs qualify regardless of ignored statuses because their row results cannot be trusted.
+
+#### Extracting only failed rows
+
+`extract_failed_crawler_rows.py` creates a small retry dataset containing selected source rows. It leaves the original source files and completion logs unchanged, so the normal crawler does not reprocess the full files. Original source files must remain unchanged because crawler-log indices refer to parsed row positions.
+
+The default is a preview. This example selects recent JSON-related `400` errors while excluding other deliberate validation failures:
+
+```bash
+python3 utils/extract_failed_crawler_rows.py data \
+  --status 400 \
+  --message-contains "is not a valid json" \
+  --max-age-days 14
+```
+
+Add `--write` after reviewing the preview:
+
+```bash
+python3 utils/extract_failed_crawler_rows.py data \
+  --status 400 \
+  --message-contains "is not a valid json" \
+  --max-age-days 14 \
+  --write
+```
+
+The command prints a `Retry data root` beneath `crawler-retry-data/`. Each batch mirrors the source directory layout and includes `manifest.jsonl`, which maps retry rows to their original source paths and row positions. Other useful filters are:
+
+- `--status 500 502 503 504` to include only listed statuses.
+- `--ignore-status 400 401` to exclude listed statuses.
+- `--message-contains TEXT` to match an API error message; repeat the option to accept alternative messages.
+- `--limit N` to stop after selecting N source files, newest first.
+- `--max-age-days N` to filter by crawler-log modification time, not the collection date in a filename.
+
+#### Crawling an isolated retry batch
+
+Keep the normal crawlers stopped while running a controlled recovery. Set the batch path printed by the extraction utility and obtain the existing crawler image:
+
+```bash
+RETRY_DIR=/absolute/path/to/crawler-retry-data/<batch-name>
+CRAWLER_IMAGE=$(docker compose \
+  -f docker/crawler/docker-compose-withreplicas.yml \
+  images -q crawler)
+```
+
+Run one retry crawler:
+
+```bash
+docker run --rm \
+  --network host \
+  --user "$(id -u):$(id -g)" \
+  -v "$RETRY_DIR:/app/data" \
+  -v "$PWD/docker/crawler/.env:/app/.env:ro" \
+  "$CRAWLER_IMAGE"
+```
+
+For a large batch, start four detached containers using the same retry directory. Atomic temporary markers ensure each file is claimed by only one crawler:
+
+```bash
+for replica in 1 2 3 4; do
+  docker run -d --rm \
+    --network host \
+    --user "$(id -u):$(id -g)" \
+    -v "$RETRY_DIR:/app/data" \
+    -v "$PWD/docker/crawler/.env:/app/.env:ro" \
+    "$CRAWLER_IMAGE"
+done
+```
+
+Retry completion logs are written beneath `$RETRY_DIR/crawler`. Check them with:
+
+```bash
+python3 utils/quarantine_crawler_logs.py "$RETRY_DIR/crawler"
+```
+
+If the utility selects nothing, every retry row returned a successful 2xx response or the expected `409` duplicate response.
+
+#### Updating the recovery ledger
+
+Original completion logs remain unchanged after row-level recovery. `update_crawler_recovery_ledger.py` maps successful retry results back to their original source rows so later extraction runs do not select them again:
+
+```bash
+python3 utils/update_crawler_recovery_ledger.py crawler-retry-data
+```
+
+The command creates or updates `crawler-retry-data/recovery-ledger.jsonl`. Only retry results with a 2xx or `409` status are recorded; failed and incomplete retries remain eligible for extraction. The operation is idempotent, and `extract_failed_crawler_rows.py` consults this ledger automatically. Keep completed retry batches as the detailed audit trail. Run the ledger update after every retry batch before performing another extraction.
 
 # Contributing
 
@@ -76,4 +205,4 @@ Contributions are welcome! Thanks to everyone who has contributed already, parti
 Please feel free to fork the repo, open issues, and submit pull requests to help resolve issues. 
 
 # License
-You are free to use, modify, and share the code in this repository under the terms of a [GNU General Public License v3](https://www.gnu.org/licenses/quick-guide-gplv3.html) (see `./LICENSE` file for full terms of license). 
+You are free to use, modify, and share the code in this repository under the terms of a [GNU General Public License v3](https://www.gnu.org/licenses/quick-guide-gplv3.html) (see `./LICENSE` file for full terms of license).
