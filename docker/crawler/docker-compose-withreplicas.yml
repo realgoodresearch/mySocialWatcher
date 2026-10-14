@@ -3,6 +3,8 @@
 services:
 
   crawler:
+    # Match the host account that owns the bind-mounted data directory.
+    user: "${CRAWLER_UID:-1000}:${CRAWLER_GID:-1000}"
     network_mode: host
     volumes:
       - ./../../data:/app/data
@@ -14,4 +16,5 @@ services:
     deploy:
       mode: replicated
       replicas: ${CRAWLER_REPLICAS}
-
+    environment:
+      PYTHONUNBUFFERED: "1"

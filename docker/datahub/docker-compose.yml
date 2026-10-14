@@ -6,7 +6,6 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf
       - ./nginx_server.conf:/etc/nginx/conf.d/nginx_server.conf
-      - ./public_html/:/var/www/public_html/
     ports:
       - "80:80"
       - "443:443"
@@ -22,6 +21,13 @@ services:
     build:
       dockerfile: ./docker/datahub/Dockerfile
       context: ./../../
+    volumes:
+      - type: bind
+        source: ./../../mysocialwatcher/api/static
+        target: /app/mysocialwatcher/api/static
+        read_only: true
+        bind:
+          create_host_path: false
     depends_on:
       - datahub_db
     networks:
@@ -42,22 +48,34 @@ services:
 
   datahub_db:
     container_name: datahub_db
-    image: postgis/postgis:14-3.3
+    image: postgis/postgis:18-3.6
     env_file: .env
     shm_size: '1gb'
     command: ['postgres', '-c', 'config_file=/datahub/postgresql.conf']
     volumes:
-      - db-data:/datahub/data
-      - ./initdb.sh:/docker-entrypoint-initdb.d/initdb.sh
-      - ./postgresql.conf:/datahub/postgresql.conf
+      - type: bind
+        source: /data/datahub/postgres18
+        target: /datahub/data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./initdb.sh
+        target: /docker-entrypoint-initdb.d/initdb.sh
+        read_only: true
+        bind:
+          create_host_path: false
+
+      - type: bind
+        source: ./postgresql.conf
+        target: /datahub/postgresql.conf
+        read_only: true
+        bind:
+          create_host_path: false
     networks:
       - net
     ports:
       - "5432:5432"
     restart: unless-stopped
-
-volumes:
-  db-data:
 
 networks:
   net:

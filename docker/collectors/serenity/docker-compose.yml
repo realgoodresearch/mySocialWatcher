@@ -9,7 +9,7 @@ services:
       args:
           sleep_time: 2
           email_notification_enable: "True"
-          email_receiver: "douglas.leasure@demography.ox.ac.uk"
+          email_receiver: "doug@realgoodresearch.com"
       context: ./../../../
       dockerfile: ./docker/collectors/Dockerfile
     restart: unless-stopped
@@ -23,7 +23,7 @@ services:
   #     args:
   #         sleep_time: 2
   #         email_notification_enable: "True"
-  #         email_receiver: "douglas.leasure@demography.ox.ac.uk"
+  #         email_receiver: "doug@realgoodresearch.com"
   #     context: ./../../../
   #     dockerfile: ./docker/collectors/Dockerfile
   #   restart: unless-stopped

@@ -28,13 +28,15 @@ LOCAL_CRAWLER="${LOCAL_PARENT}/crawler"
 # -P  : show progress and keep partially transferred files
 RSYNC_BIN="$(command -v rsync)"
 RSYNC_OPTS="-az --info=NAME,SKIP0"
+# A directory-only pattern without an internal slash matches at any depth.
+RSYNC_EXCLUDES=(--exclude='logs/')
 
 # ——— STEP 1: per‐host sync ———
 for HOST in "${REMOTE_SERVERS[@]}"; do
   echo "ls />> Syncing from ${HOST}:${REMOTE_PATH} …"
   DEST="${LOCAL_PARENT}/${HOST}"
   mkdir -p "$DEST"
-  "$RSYNC_BIN" $RSYNC_OPTS \
+  "$RSYNC_BIN" $RSYNC_OPTS "${RSYNC_EXCLUDES[@]}" \
     "${HOST}:${REMOTE_PATH}/" \
     "$DEST/"
 done
@@ -47,7 +49,7 @@ for HOST in "${REMOTE_SERVERS[@]}"; do
   SRC="${LOCAL_PARENT}/${HOST}/crawler/"
   if [ -d "$SRC" ]; then
     echo "   • syncing ${SRC} → ${LOCAL_CRAWLER}/${HOST}/"
-    "$RSYNC_BIN" -azP \
+    "$RSYNC_BIN" -azP "${RSYNC_EXCLUDES[@]}" \
       "$SRC" \
       "${LOCAL_CRAWLER}/${HOST}"
   else

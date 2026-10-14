@@ -1,8 +1,11 @@
 import os
 import json
 import datetime
+import logging
+import threading
+from functools import wraps
 import pandas as pd
-import sqlalchemy, psycopg2
+import sqlalchemy
 from ast import literal_eval
 from dotenv import load_dotenv
 
@@ -14,16 +17,55 @@ def timestr():
     return datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc, microsecond=0).isoformat(sep=" ")[:-3]
 
 
+_engines = {}
+_engine_lock = threading.Lock()
+
+
+def _reset_engines_after_fork():
+    # Never share a parent's connections or thread lock with a worker.
+    global _engines, _engine_lock
+    _engines = {}
+    _engine_lock = threading.Lock()
+
+
+os.register_at_fork(after_in_child=_reset_engines_after_fork)
+
+
+def database_errors(func):
+    @wraps(func)
+    def wrapped(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except sqlalchemy.exc.SQLAlchemyError as exc:
+            logging.getLogger(__name__).error(
+                "Database operation failed in %s (%s)", func.__name__, type(exc).__name__
+            )
+            unavailable = isinstance(exc, (sqlalchemy.exc.OperationalError,
+                                           sqlalchemy.exc.TimeoutError))
+            return {'status': 503 if unavailable else 500,
+                    'message': 'Database temporarily unavailable.' if unavailable
+                               else 'Database operation failed.',
+                    'timestamp': timestr()}
+    return wrapped
+
+
 def db_engine(pw=os.environ.get('POSTGRES_WPASS'),
               host=os.environ.get('POSTGRES_HOST'),
               port=os.environ.get('POSTGRES_PORT'),
               db=os.environ.get('POSTGRES_DB')):
 
-    engine_string = 'postgresql+psycopg2://writer:' + pw + '@' + host + ':' + port + '/' + db
-
-    db = sqlalchemy.create_engine(engine_string, poolclass=sqlalchemy.pool.NullPool)
-
-    return db
+    key = (pw, host, port, db)
+    with _engine_lock:
+        if key not in _engines:
+            url = sqlalchemy.engine.URL.create(
+                'postgresql+psycopg2', username='writer', password=pw,
+                host=host, port=int(port), database=db)
+            # Three threads per worker: at most three connections per worker
+            # (48 for 16 workers). Connections are opened only when needed.
+            _engines[key] = sqlalchemy.create_engine(
+                url, pool_size=3, max_overflow=0, pool_timeout=30,
+                pool_pre_ping=True, connect_args={'connect_timeout': 10})
+        return _engines[key]
 
 
 def validate_token(token, conn, write_access=False):
@@ -181,17 +223,22 @@ def check_args(args, required=[], required_oneof=[], optional=[]):
     if status == 200:
         for i in set(args.keys()).intersection(json_args):
             try:
-                x = args.get(i).replace("'", '"')
-                json.loads(x)
-                args[i] = x
-            except:
+                value = args.get(i)
+                try:
+                    parsed = json.loads(value)
+                except (json.JSONDecodeError, TypeError):
+                    # Older collectors sometimes sent Python literals rather
+                    # than JSON (for example, single quotes and None).
+                    parsed = literal_eval(value)
+                args[i] = json.dumps(parsed)
+            except (json.JSONDecodeError, TypeError, ValueError, SyntaxError):
                 status = 400
                 message = "Bad Request: '{}' is not a valid json.".format(i)
                 break
 
     # compare country to geo_locations
     if status == 200 and 'geo_locations' in args.keys():
-        geo_locations = literal_eval(args.get('geo_locations'))
+        geo_locations = json.loads(args.get('geo_locations'))
 
         countries = countries_from_geo_locations(geo_locations)
         if len(countries) == 0:
@@ -248,6 +295,8 @@ def check_args(args, required=[], required_oneof=[], optional=[]):
 
         # quote strings
         for i in set(args.keys()).intersection(quote_args):
-            args[i] = "'" + str(args[i].replace("'", '"')) + "'"
+            # SQL string literals escape apostrophes by doubling them. This
+            # preserves names such as Cote d'Ivoire inside JSON values.
+            args[i] = "'" + str(args[i]).replace("'", "''") + "'"
 
     return {'status': status, 'message': message, 'args': args}

@@ -2,6 +2,8 @@
 services:
 
   crawler:
+    # Match the host account that owns the bind-mounted data directory.
+    user: "${CRAWLER_UID:-1000}:${CRAWLER_GID:-1000}"
     container_name: crawler
     network_mode: host
     volumes:
@@ -11,4 +13,3 @@ services:
       context: ./../../
       dockerfile: ./docker/crawler/Dockerfile
     restart: on-failure
-

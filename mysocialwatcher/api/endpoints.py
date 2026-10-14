@@ -4,6 +4,7 @@ import sqlalchemy.exc
 from mysocialwatcher.api.utils import *
 
 
+@database_errors
 def query(args):
     """Process requests to API endpoint '/api/v1/social_media_audience/query' by selecting queried data from a PostgreSQL table.
     Args:
@@ -50,7 +51,8 @@ def query(args):
         db = db_engine()
 
         # validate token
-        result = validate_token(token=args.get("token"), conn=db.connect())
+        with db.connect() as conn:
+            result = validate_token(token=args.get("token"), conn=conn)
 
         status = result.get("status")
         if status == 200:
@@ -126,7 +128,8 @@ def query(args):
 
         # ---- query database ----#
         try:
-            data = pd.read_sql(sql=sql, con=db.connect())
+            with db.connect() as conn:
+                data = pd.read_sql(sql=sql, con=conn)
 
             if len(data) < limit_rows:
                 status = 200
@@ -142,16 +145,14 @@ def query(args):
 
         except Exception as e:
             exc = e.__dict__
-            status = exc.get("code")
-            message = exc.get("orig")
-
-    if db:
-        db.dispose()
+            status = 500
+            message = str(exc.get("orig") or e)
 
     # return result
     return {"status": status, "message": message, "timestamp": timestr(), "data": data}
 
 
+@database_errors
 def query_clean(args):
     """Process requests to API endpoint '/api/v1/social_media_audience/query_clean' by selecting queried data from a PostgreSQL table.
     Args:
@@ -208,7 +209,8 @@ def query_clean(args):
         db = db_engine()
 
         # validate token
-        result = validate_token(token=args.get("token"), conn=db.connect())
+        with db.connect() as conn:
+            result = validate_token(token=args.get("token"), conn=conn)
 
         status = result.get("status")
         if status == 200:
@@ -296,7 +298,8 @@ def query_clean(args):
         # ---- query database ----#
         try:
 
-            data = pd.read_sql(sql=sql, con=db.connect())
+            with db.connect() as conn:
+                data = pd.read_sql(sql=sql, con=conn)
 
             if add_geometry:
                 keys = list(set(data["geo_key"]))
@@ -305,12 +308,13 @@ def query_clean(args):
                 if len(keys) > 0:
                     geo_sql = f"select * from geometries where geo_key in ({keystr});"
 
-                    geodata = gpd.read_postgis(
-                        sql=geo_sql,
-                        con=db.connect(),
-                        geom_col="geometry",
-                        crs="EPSG:4326",
-                    )
+                    with db.connect() as conn:
+                        geodata = gpd.read_postgis(
+                            sql=geo_sql,
+                            con=conn,
+                            geom_col="geometry",
+                            crs="EPSG:4326",
+                        )
                     geodata = geodata.to_json()
 
             if len(data) < limit_rows:
@@ -327,11 +331,8 @@ def query_clean(args):
 
         except Exception as e:
             exc = e.__dict__
-            status = exc.get("code")
-            message = exc.get("orig")
-
-    if db:
-        db.dispose()
+            status = 500
+            message = str(exc.get("orig") or e)
 
     # return result
     return {
@@ -343,6 +344,7 @@ def query_clean(args):
     }
 
 
+@database_errors
 def write(args):
     """Process requests to API endpoint '/api/v1/social_media_audience/write' by inserting them into a PostgreSQL table.
     Args:
@@ -390,9 +392,10 @@ def write(args):
         db = db_engine()
 
         # validate token
-        result = validate_token(
-            token=args.get("token"), conn=db.connect(), write_access=True
-        )
+        with db.connect() as conn:
+            result = validate_token(
+                token=args.get("token"), conn=conn, write_access=True
+            )
 
         status = result.get("status")
         if status == 200:
@@ -407,9 +410,10 @@ def write(args):
         # collection id
         if "collection" in args.keys():
 
-            collection_id = register_collection(
-                collection_name=args.pop("collection"), conn=db.connect()
-            )
+            with db.connect() as conn:
+                collection_id = register_collection(
+                    collection_name=args.pop("collection"), conn=conn
+                )
 
             if isinstance(collection_id, int):
                 args["collection_id"] = collection_id
@@ -426,7 +430,7 @@ def write(args):
         sql = (
             "INSERT INTO "
             + table
-            + "({}) VALUES({});".format(
+            + "({}) VALUES({}) ON CONFLICT DO NOTHING;".format(
                 ",".join(args.keys()), ",".join([str(i) for i in args.values()])
             )
         )
@@ -436,35 +440,26 @@ def write(args):
 
             try:
                 result = conn.execute(sql)
-                message = "OK: Data successfully written into database."
+                if result.rowcount == 0:
+                    status = 409
+                    message = "Conflict: Data already in database with UNIQUE constraint."
+                else:
+                    message = "OK: Data successfully written into database."
 
             except sqlalchemy.exc.SQLAlchemyError as e:
-                # exc = e
-                if isinstance(e, sqlalchemy.exc.IntegrityError) and isinstance(
-                    e.orig, psycopg2.errors.UniqueViolation
-                ):
-                    status = 409
-                    message = (
-                        "(sqlalchemy code: "
-                        + str(e.code)
-                        + ") Conflict: Data already in database with UNIQUE constraint. "
-                    )
-                else:
-                    status = e.code
-                    message = e._message()
+                status = 500  # SQLAlchemy error codes are not HTTP status codes.
+                message = e._message()
 
         if status == 200 and "invalid" in table:
             message += (
                 " Written with flag 'valid=false' so data will not persist in database."
             )
 
-    if db:
-        db.dispose()
-
     # return result
     return {"status": status, "message": message, "timestamp": timestr()}
 
 
+@database_errors
 def collections(args):
 
     status = 200
@@ -484,7 +479,8 @@ def collections(args):
         db = db_engine()
 
         # validate token
-        result = validate_token(token=args.get("token"), conn=db.connect())
+        with db.connect() as conn:
+            result = validate_token(token=args.get("token"), conn=conn)
 
         message = result.get("message")
         status = result.get("status")
@@ -501,7 +497,8 @@ def collections(args):
                 f");"
             )
 
-            collections = pd.read_sql(sql=sql, con=db.connect())
+            with db.connect() as conn:
+                collections = pd.read_sql(sql=sql, con=conn)
 
             for i in range(len(collections)):
                 data.append(
@@ -514,15 +511,13 @@ def collections(args):
             message = "OK: Your collections successfully queried."
 
         except sqlalchemy.exc.SQLAlchemyError as e:
-            status = e.code
+            status = 500  # SQLAlchemy error codes are not HTTP status codes.
             message = e._message()
-
-    if db:
-        db.dispose()
 
     return {"status": status, "message": message, "timestamp": timestr(), "data": data}
 
 
+@database_errors
 def monitor(args):
 
     status = 200
@@ -566,7 +561,8 @@ def monitor(args):
         db = db_engine()
 
         # validate token
-        result = validate_token(token=args.get("token"), conn=db.connect())
+        with db.connect() as conn:
+            result = validate_token(token=args.get("token"), conn=conn)
 
         message = result.get("message")
         status = result.get("status")
@@ -583,7 +579,8 @@ def monitor(args):
                 f"(SELECT UNNEST(collaborators) FROM contributors WHERE id = {contributor_id})"
                 f");"
             )
-            collections = pd.read_sql(sql=sql, con=db.connect())
+            with db.connect() as conn:
+                collections = pd.read_sql(sql=sql, con=conn)
 
             if "collections" in args.keys():
                 collections = collections[
@@ -619,7 +616,8 @@ def monitor(args):
                             f"WHERE collection_id = {collection_id} AND collection_date='{date_string}';"
                         )
 
-                        response = pd.read_sql(sql=sql, con=db.connect())
+                        with db.connect() as conn:
+                            response = pd.read_sql(sql=sql, con=conn)
 
                         result = {"record_count": int(response["record_count"])}
                         if result.get("record_count") > 0:
@@ -639,15 +637,13 @@ def monitor(args):
             message = "OK: Your collections successfully queried."
 
         except sqlalchemy.exc.SQLAlchemyError as e:
-            status = e.code
+            status = 500  # SQLAlchemy error codes are not HTTP status codes.
             message = e._message()
-
-    if db:
-        db.dispose()
 
     return {"status": status, "message": message, "timestamp": timestr(), "data": data}
 
 
+@database_errors
 def data_overview(args):
     """Process requests to API endpoint '/api/v1/social_media_audience/data_overview' by selecting queried data from a
     PostgreSQL view.
@@ -720,15 +716,13 @@ def data_overview(args):
 
             # query database
             db = db_engine()
-            data = pd.read_sql(sql=sql, con=db.connect())
+            with db.connect() as conn:
+                data = pd.read_sql(sql=sql, con=conn)
             data = data.to_json()
             message = "OK: Your data overview was successfully queried."
 
         except sqlalchemy.exc.SQLAlchemyError as e:
-            status = e.code
+            status = 500  # SQLAlchemy error codes are not HTTP status codes.
             message = e._message()
-
-    if db:
-        db.dispose()
 
     return {"status": status, "message": message, "timestamp": timestr(), "data": data}

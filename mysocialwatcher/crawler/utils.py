@@ -219,11 +219,19 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write'):
         error_path = out_path.replace('log.csv.gz', 'error.txt')
 
         if not os.path.exists(out_path) and not os.path.exists(temp_path) and not os.path.exists(error_path):
-            print('[' + str(datetime.datetime.now()) + '] ' + file)
+            # Atomically claim the file: only one replica may create the marker.
+            try:
+                with open(temp_path, "x") as f:
+                    f.write('[' + str(datetime.datetime.now()) + '] Begin processing data...' + '\n')
+            except FileExistsError:
+                continue
 
-            # create temp file for parallel processing
-            with open(temp_path, "w") as f:
-                f.write('[' + str(datetime.datetime.now()) + '] Begin processing data...' + '\n')
+            # Another replica may have finished after our initial checks.
+            if os.path.exists(out_path) or os.path.exists(error_path):
+                os.remove(temp_path)
+                continue
+
+            print('[' + str(datetime.datetime.now()) + '] ' + file)
 
             try:
                 # load data
