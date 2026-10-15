@@ -67,7 +67,7 @@ The crawlers require an environment file to exist in `./docker/crawler/.env` to 
 
 A single crawler can be launched as a background process by executing `docker compose up -d` from `./docker/crawler/`.
 
-Many crawlers can be launched simultaneously using `docker compose -f docker-compose-with-replicas.yml up -d`. Be sure to edit `./docker/crawler/docker-compose-with-replicas.yml` to define how many replica crawlers you want to launch. Crawlers will create temporary files in the appropriate sub-folder of `./data/crawler/` to indicate files that are currently being crawled for coordination across crawlers. If the processes are killed before finishing (e.g. reboot), then these temporary files need to be deleted or the files will never be recrawled.
+Many crawlers can be launched simultaneously using `docker compose up -d` from `./docker/crawler/`. Set `CRAWLER_REPLICAS` in `./docker/crawler/.env` to choose the number of crawlers; it defaults to four and can be set to one when desired. Crawlers create temporary files in the appropriate sub-folder of `./data/crawler/` to coordinate work. If the processes are killed before finishing (for example, during a reboot), remove those temporary files before restarting so the affected data files can be crawled again.
 
 ### Crawler operations and recovery
 
@@ -177,7 +177,7 @@ Keep the normal crawlers stopped while running a controlled recovery. Set the ba
 ```bash
 RETRY_DIR=/absolute/path/to/crawler-recovery/retry-data/<batch-name>
 CRAWLER_IMAGE=$(docker compose \
-  -f docker/crawler/docker-compose-withreplicas.yml \
+  -f docker/crawler/docker-compose.yml \
   images -q crawler)
 ```
 

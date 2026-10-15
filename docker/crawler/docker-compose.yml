@@ -12,3 +12,8 @@ services:
       context: ./../../
       dockerfile: ./docker/crawler/Dockerfile
     restart: on-failure
+    deploy:
+      mode: replicated
+      replicas: ${CRAWLER_REPLICAS:-4}
+    environment:
+      PYTHONUNBUFFERED: "1"

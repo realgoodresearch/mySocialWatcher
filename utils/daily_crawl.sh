@@ -33,7 +33,7 @@ fi
 # ——— STEP 2: stop existing crawlers ———
 echo ">>> Stopping any running crawler containers…"
 pushd "$DOCKER_CRAWLER_DIR" >/dev/null
-docker compose -f docker-compose-withreplicas.yml stop
+docker compose stop
 
 # ——— STEP 3: cleanup temp files ———
 echo ">>> Removing temporary crawler files (*.temp.txt)…"
@@ -43,7 +43,7 @@ find "$DATA_CRAWLER_DIR" -type f -name '*temp.txt' \
 
 # ——— STEP 4: launch replicated crawlers ———
 echo ">>> Starting crawler replicas…"
-docker compose -f docker-compose-withreplicas.yml up -d
+docker compose up -d
 popd >/dev/null
 
 echo ">>> All steps completed successfully."
