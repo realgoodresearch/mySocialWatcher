@@ -3,11 +3,11 @@
 Issue: https://github.com/realgoodresearch/mySocialWatcher/issues/3  
 Branch: `feat/fastapi-v2-ingestion`
 
-## Safety constraints
+## Deployment constraints
 
-- Do not connect to or write to the production database.
-- Do not restart, rebuild, reconfigure, or share resources with running containers.
-- Development containers use a distinct Compose project, network, credentials, ports, and disposable volumes.
+- Production tests use the dedicated test contributor and token.
+- Do not restart or reconfigure API v1, nginx, the database, or production crawlers while validating v2.
+- Crawler tests use copied files and disposable directories.
 - API v2 listens on host port 8001.
 - Flask API v1, nginx, and the production crawler configuration remain unchanged.
 - Batch crawler behavior is opt-in; v1 remains the default.
@@ -31,7 +31,8 @@ Branch: `feat/fastapi-v2-ingestion`
 - [x] Add standalone batch client and equivalence fixtures.
 - [x] Add opt-in crawler integration.
 - [x] Benchmark one and four isolated clients.
-- [x] Document future deployment and rollback without applying them.
+- [x] Add v2 to the datahub Compose stack and deploy it alongside v1.
+- [x] Validate a real insert, duplicate replay, and completion-log skip with an isolated crawler.
 
 ## Validation record
 
@@ -55,7 +56,14 @@ Branch: `feat/fastapi-v2-ingestion`
   - 16 missing-audience 400s in two additional files matched their existing v1 logs exactly;
   - isolated API logs contained no server errors.
 - All crawler test containers, copied files, networks, and disposable volumes were removed after verification.
+- Production deployment validation:
+  - `datahub_api_v2` remained healthy on `127.0.0.1:8001` alongside v1;
+  - read-only database connectivity succeeded;
+  - a known completed 399-row file returned 399 duplicates and zero inserts;
+  - an uncrawled 105-row Aruba Instagram file created 105 rows under the dedicated test contributor and a 105-row all-200 completion log;
+  - replay left the database count at 105, and restart with the completion log skipped the file;
+  - the production crawler containers remained stopped throughout the live crawler test.
 
 ## Next action
 
-Review the completed branch and decide whether to prepare a separately approved production deployment.
+Rotate the exposed test token, then run a small four-replica copied workload against v2 before changing the production crawler configuration.
