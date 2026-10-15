@@ -37,6 +37,10 @@ class ValidationTests(unittest.TestCase):
     def test_geo_country_replaces_supplied_country(self):
         self.assertEqual(normalize_row(row(country="GB")).country, "CI")
 
+    def test_preserves_legacy_list_form_targeting(self):
+        targeting = [{"geo_locations": {"custom_locations": []}}]
+        self.assertEqual(normalize_row(row(targeting=targeting)).targeting, targeting)
+
     def test_not_ready_is_routed_to_invalid_table(self):
         response = {"data": [{"estimate_ready": False}]}
         self.assertEqual(normalize_row(row(response=response)).table, "facebook_invalid")

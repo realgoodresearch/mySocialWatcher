@@ -23,7 +23,7 @@ class RowInput(BaseModel):
     valid: bool = False
     country: str | None = None
     all_fields: dict[str, Any] = Field(default_factory=dict)
-    targeting: dict[str, Any] = Field(default_factory=dict)
+    targeting: dict[str, Any] | list[dict[str, Any]] = Field(default_factory=dict)
     response: dict[str, Any] | list[dict[str, Any]]
 
     @model_validator(mode="after")
@@ -48,7 +48,7 @@ class NormalizedRow(BaseModel):
     timestamp: int
     geo_locations: dict[str, Any]
     all_fields: dict[str, Any]
-    targeting: dict[str, Any]
+    targeting: dict[str, Any] | list[dict[str, Any]]
     response: dict[str, Any] | list[dict[str, Any]]
 
 
