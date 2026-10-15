@@ -13,6 +13,7 @@ services:
       - net
     depends_on:
       - datahub_api
+      - datahub_api_v2
     restart: unless-stopped
 
   datahub_api:
