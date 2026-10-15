@@ -54,6 +54,18 @@ class RouteTests(unittest.TestCase):
         response = TestClient(app).post("/socialwatcher/v2/write-batch", json=payload())
         self.assertEqual(response.status_code, 401)
 
+    def test_validation_error_does_not_echo_token_or_request_values(self):
+        secret = "never-echo-this-token"
+        app.dependency_overrides[get_writer] = lambda: Writer()
+        response = TestClient(app).post(
+            "/socialwatcher/v2/write-batch",
+            json={"token": secret, "collection": "test"},
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertNotIn(secret, response.text)
+        self.assertNotIn("input", response.text)
+        self.assertEqual(response.json()["detail"][0]["loc"], ["body", "rows"])
+
 
 if __name__ == "__main__":
     unittest.main()

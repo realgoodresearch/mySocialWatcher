@@ -12,6 +12,14 @@ from ast import literal_eval
 from mysocialwatcher.crawler.batch import submit_dataframe_v2
 
 
+def safe_http_error_message(exc, response=None):
+    """Describe an HTTP failure without including request or response bodies."""
+    exception = f"{type(exc).__name__}: {exc}"
+    if isinstance(response, requests.models.Response):
+        return f'EXCEPTION: "{exception}"; HTTP STATUS: {response.status_code}'
+    return f'EXCEPTION: "{exception}"; HTTP STATUS: unavailable'
+
+
 # def country_from_geo(geo):
 #
 #     country = []
@@ -150,12 +158,7 @@ def psw_to_sql(df, collection_name, token,
             response_message[index] = http_response_dict.get('message')
 
         except Exception as e:
-            if isinstance(http_response, requests.models.Response):
-                http_response_text = http_response.text
-            else:
-                http_response_text = str(http_response)
-
-            message = 'EXCEPTION: "' + str(e) + '";/n HTTP RESPONSE: "' + http_response_text + '"'
+            message = safe_http_error_message(e, http_response)
             warnings.warn(message)
             
             response_timestamp[index] = str(datetime.datetime.now())

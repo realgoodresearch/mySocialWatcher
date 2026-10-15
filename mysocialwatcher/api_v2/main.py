@@ -1,6 +1,8 @@
 from functools import lru_cache
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from mysocialwatcher.api_v2.database import (
     AuthenticationError,
@@ -18,6 +20,25 @@ app = FastAPI(
     docs_url="/socialwatcher/v2/docs",
     openapi_url="/socialwatcher/v2/openapi.json",
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    request: Request,
+    exc: RequestValidationError,
+) -> JSONResponse:
+    """Return useful validation errors without echoing request values or tokens."""
+    del request
+    detail = [
+        {
+            "type": error["type"],
+            "loc": error["loc"],
+            "msg": error["msg"],
+        }
+        for error in exc.errors()
+    ]
+    return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        content={"detail": detail})
 
 
 @app.get(
