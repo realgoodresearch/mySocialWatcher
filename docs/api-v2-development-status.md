@@ -63,7 +63,9 @@ Branch: `feat/fastapi-v2-ingestion`
   - an uncrawled 105-row Aruba Instagram file created 105 rows under the dedicated test contributor and a 105-row all-200 completion log;
   - replay left the database count at 105, and restart with the completion log skipped the file;
   - the production crawler containers remained stopped throughout the live crawler test.
+  - four host-user replicas processed four copied files concurrently: 1,857 all-200 log rows, 1,701 attributable inserts, 156 existing duplicates, no stale markers, and no API errors;
+  - copied crawler logs were owned by UID/GID 1000 rather than root; post-test v2 memory was 103 MiB.
 
 ## Next action
 
-Rotate the exposed test token, then run a small four-replica copied workload against v2 before changing the production crawler configuration.
+Review the branch and prepare the production crawler configuration switch when desired.
