@@ -1,0 +1,7 @@
+# Standard syntax: <file-pattern> <owners>
+
+# Require @org/security-team and @john-doe to approve ALL changes in the repo
+* @doug-leasure
+
+# Require @org/frontend-team for anything in the src/frontend folder
+# /src/frontend/ @org/frontend-team
