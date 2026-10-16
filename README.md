@@ -263,3 +263,9 @@ Please feel free to fork the repo, open issues, and submit pull requests to help
 
 # License
 You are free to use, modify, and share the code in this repository under the terms of a [GNU General Public License v3](https://www.gnu.org/licenses/quick-guide-gplv3.html) (see `./LICENSE` file for full terms of license).
+
+Database schema history is maintained in `docker/datahub/migrations/`. Clean
+initialization and existing-database upgrades use the same migration runner; see
+[the API v2 database foundation notes](docs/api-v2.md#file-registry-database-foundation-issue-5)
+for explicit legacy adoption and isolated rebuild testing. Registry rollout has
+not changed production crawler skip behavior.

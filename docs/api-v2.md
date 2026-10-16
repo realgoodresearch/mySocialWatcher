@@ -100,3 +100,74 @@ Before any crawler has been switched, rollback consists only of removing v2:
 docker compose -f docker/datahub/docker-compose.yml stop datahub_api_v2
 docker compose -f docker/datahub/docker-compose.yml rm -f datahub_api_v2
 ```
+
+## File registry database foundation (issue #5)
+
+The datahub schema is now maintained in `docker/datahub/migrations/*.sql`.
+`0001_initial.sql` preserves the existing tables, indexes, grants, seed records,
+and country partitions. `0002_crawler_file_registry.sql` adds the registry and
+transactional claim/completion functions. The API's SQLAlchemy table declarations
+are query mappings, not an alternative schema creation mechanism.
+
+On an empty PostgreSQL data directory, `initdb.sh` creates the writer/reader roles
+and invokes `/schema/migrate.sh`. The datahub Compose definition mounts the schema
+directory read-only. No migrations run automatically when the API starts or when
+an existing PostgreSQL data directory is reused.
+
+The migration runner requires explicit `POSTGRES_USER` and `POSTGRES_DB` settings;
+standard libpq settings such as `PGHOST` and `PGPORT` select the server. Run it as
+the schema owner. It uses a transaction and advisory lock, records SHA-256 checksums
+in `schema_migrations`, skips applied versions, and rejects changed applied files.
+Add new numbered SQL files instead of editing applied migrations. A failed run
+rolls back its entire set of pending changes. The runner requires Bash, psql, and
+sha256sum and can run without Python or the API dependencies.
+
+Existing pre-migration installations require a one-time explicit adoption:
+`bash docker/datahub/migrate.sh --baseline-legacy`. This checks that all nine legacy
+tables exist, records migration 0001 without recreating tables or seed data, and
+applies subsequent migrations in the same transaction. Before adopting a database,
+compare its schema with 0001: the table-presence guard does not certify custom or
+partially modified schemas. Subsequent upgrades use `bash docker/datahub/migrate.sh`.
+Neither command has been run against production as part of this work.
+
+`crawler_files` identifies decompressed CSV bytes by lowercase SHA-256 and retains
+first-seen path and uncompressed byte size. `crawler_file_attempts` holds paths,
+optional archive hash/size, collection, crawler, API and policy versions, retry
+relationships, leases, outcomes, counts, and a bounded error summary. Paths must
+be relative POSIX paths under `data/`, without traversal components. A caller must
+also enforce containment when resolving paths on disk. Hashing, HTTP authentication,
+API endpoints, lease renewal, and crawler dual-recording are subsequent rollout
+work; this migration does not change crawler behavior or CSV logging.
+
+The `crawler_claim(hash, path, uncompressed_size, collection, crawler_instance,
+lease_seconds)` SQL function returns a decision, attempt ID, and secret claim token.
+It serializes claims on the logical file and returns `process`, `retry`,
+`in_progress`, or `already_completed`. An expired claim becomes an `abandoned`
+attempt when reclaimed. Leases default to 900 seconds and must be 1–86400 seconds.
+The future authenticated API should retain the token for completion and never log it.
+
+`crawler_finish(id, token, outcome, total_rows, rows_200, rows_409, rows_400,
+rows_401, rows_5xx, rows_other, corrupt_rows, error_summary)` accepts only a live
+claim and returns false for stale, wrong, or previously finished claims. Counts
+represent final per-source-row outcomes, not HTTP retry request counts. Successful
+completion requires a known row total equal to terminal results. Policy `v1`
+accepts only 200/409; no 400 categories have yet been approved. A future migration
+and matching API policy must explicitly introduce accepted rejection categories.
+Failures may have an unknown total and remain retryable. The functions use caller
+privileges and are intended for the trusted API writer role; they are not an
+HTTP authorization boundary. Writer has table access for recording optional attempt
+metadata, and must use these functions for lease-sensitive state transitions.
+
+Run the full isolated rebuild test with:
+
+```bash
+RUN_REGISTRY_REBUILD_TEST=1 python3 -m unittest utils.tests.test_registry_rebuild -v
+```
+
+It requires Docker and the `postgres:18` image. It creates a unique disposable
+container with no network, host ports, or persistent data volume, mounts only the
+schema files, and removes its own container afterward. It verifies clean init,
+legacy upgrade equivalence, columns/constraints/indexes/partitions, migration
+reruns and checksums, transaction rollback, concurrent migration runners, four
+concurrent claimers, lease expiry, retry history, and terminal outcome enforcement.
+The existing smaller API v2 test fixture remains available for ingestion tests.
