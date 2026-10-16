@@ -90,6 +90,7 @@ def submit_dataframe_v2(
         )
         response.raise_for_status()
         body = response.json()
+        row_results = {item["source_index"]: item for item in body["results"]}
         rejected = {item["source_index"]: item for item in body["errors"]}
         for row in batch:
             index = row["source_index"]
@@ -97,7 +98,8 @@ def submit_dataframe_v2(
                 item = rejected[index]
                 results[index] = (item["status"], item["message"])
             else:
-                results[index] = (200, "OK: accepted (inserted or already present).")
+                item = row_results[index]
+                results[index] = (item["status"], item["message"])
 
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     return pd.DataFrame({

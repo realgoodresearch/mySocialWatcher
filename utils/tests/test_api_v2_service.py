@@ -30,7 +30,7 @@ class FakeWriter:
     def write(self, token, collection, rows):
         self.call = (token, collection, rows)
         inserted = len(rows) if self.inserted is None else self.inserted
-        return inserted, len(rows) - inserted
+        return {row.source_index for row in rows[:inserted]}
 
 
 class BatchServiceTests(unittest.TestCase):
@@ -50,6 +50,8 @@ class BatchServiceTests(unittest.TestCase):
             token="secret", collection="test", rows=[valid_row(0), valid_row(1)]
         ), writer)
         self.assertEqual((result.inserted, result.duplicates), (1, 1))
+        self.assertEqual([item.status for item in result.results], [200, 409])
+        self.assertEqual(result.results[1].message, "Conflict: row already exists.")
 
     def test_duplicate_source_index_is_rejected(self):
         writer = FakeWriter()

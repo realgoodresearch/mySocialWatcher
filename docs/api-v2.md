@@ -8,7 +8,7 @@ API v2 is an independent FastAPI batch-ingestion service. It does not replace Fl
 
 `POST /socialwatcher/v2/write-batch` accepts an envelope containing one token, one collection name, and 1–1,000 normalized rows. Invalid rows are returned in `errors` by `source_index`; valid rows remain eligible for the same transaction. Authentication failures return 401, and database failures roll back the batch and return 503.
 
-The response reports aggregate `inserted`, `duplicates`, and `rejected` counts. The crawler records accepted rows as status 200 with the message `accepted (inserted or already present)`. It does not distinguish inserted rows from conflicts in its row-level completion log.
+The response reports aggregate `inserted`, `duplicates`, and `rejected` counts. It also returns one row-level result for every valid row: newly inserted rows receive status 200 and existing rows receive status 409. Validation failures remain status 400 in `errors`. Messages are concise and do not expose PostgreSQL error details. The crawler writes these statuses into its normal completion log, so a completed historical file can show whether it added data or consisted only of duplicates.
 
 ## Isolated development
 
@@ -61,7 +61,7 @@ API_URL=http://HOST:8001/socialwatcher/v2/write-batch
 API_BATCH_SIZE=500
 ```
 
-Do not change the live crawler environment until v2 deployment is separately approved.
+The crawler image supports both API versions; switching versions only requires changing these environment settings and recreating the crawler containers.
 
 ## Benchmark results
 
@@ -90,7 +90,7 @@ docker compose -f docker/datahub/docker-compose.yml up -d --build --wait --no-de
 curl --fail http://127.0.0.1:8001/socialwatcher/v2/health
 ```
 
-It reads the existing database environment, shares the datahub network, and binds port 8001 only on localhost. It does not add nginx routing or change crawler settings.
+It reads the existing database environment, shares the datahub network, and binds port 8001 only on localhost. Nginx routes `/socialwatcher/v2/` to this service.
 
 Rollback is to set crawlers back to `API_MODE=v1` with the v1 URL, then stop the v2 container. V1 data and completion logs remain compatible because v2 writes to the existing tables and emits the same three crawler log columns.
 

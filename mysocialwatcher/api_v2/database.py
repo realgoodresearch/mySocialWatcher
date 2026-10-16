@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import os
-from collections import defaultdict
+import json
+from collections import defaultdict, deque
 from collections.abc import Sequence
 
 from sqlalchemy import (
@@ -15,7 +16,6 @@ from sqlalchemy import (
     String,
     Table,
     create_engine,
-    literal,
     select,
 )
 from sqlalchemy.dialects.postgresql import JSONB, insert
@@ -109,7 +109,7 @@ class BatchWriter:
     def __init__(self, engine: Engine):
         self.engine = engine
 
-    def write(self, token: str, collection: str, rows: Sequence[NormalizedRow]) -> tuple[int, int]:
+    def write(self, token: str, collection: str, rows: Sequence[NormalizedRow]) -> set[int]:
         try:
             with self.engine.begin() as connection:
                 contributor_id = connection.execute(
@@ -136,23 +136,44 @@ class BatchWriter:
                             select(collections.c.id).where(collections.c.name == collection)
                         ).scalar_one()
 
-                grouped: dict[str, list[dict]] = defaultdict(list)
+                grouped: dict[str, list[tuple[NormalizedRow, dict]]] = defaultdict(list)
                 for row in rows:
                     values = row.model_dump(exclude={"source_index", "table"})
                     values.update(collection_id=collection_id, contributor_id=contributor_id)
-                    grouped[row.table].append(values)
+                    grouped[row.table].append((row, values))
 
-                inserted = 0
-                for table_name, values in grouped.items():
+                inserted_indices: set[int] = set()
+                identity_columns = (
+                    "country", "collection_date", "gender", "age_min", "age_max", "dau",
+                    "geo_locations", "targeting", "response",
+                )
+                for table_name, items in grouped.items():
+                    table = AUDIENCE_TABLES[table_name]
+                    pending: dict[tuple, deque[int]] = defaultdict(deque)
+                    for row, values in items:
+                        pending[_row_identity(values)].append(row.source_index)
                     result = connection.execute(
-                        insert(AUDIENCE_TABLES[table_name])
-                        .values(values)
+                        insert(table)
+                        .values([values for _, values in items])
                         .on_conflict_do_nothing()
-                        .returning(literal(1))
+                        .returning(*(table.c[name] for name in identity_columns))
                     )
-                    inserted += len(result.all())
-                return inserted, len(rows) - inserted
+                    for inserted in result.mappings():
+                        inserted_indices.add(pending[_row_identity(inserted)].popleft())
+                return inserted_indices
         except AuthenticationError:
             raise
         except (OperationalError, SQLAlchemyError) as exc:
             raise DatabaseWriteError("database batch write failed") from exc
+
+
+def _row_identity(values) -> tuple:
+    def canonical(value):
+        return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+    return (
+        values["country"], values["collection_date"], values["gender"],
+        values["age_min"], values["age_max"], values["dau"],
+        canonical(values["geo_locations"]), canonical(values.get("targeting") or {}),
+        canonical(values["response"]),
+    )

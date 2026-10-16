@@ -27,7 +27,7 @@ def payload():
 
 class Writer:
     def write(self, token, collection, rows):
-        return len(rows), 0
+        return {row.source_index for row in rows}
 
 
 class RouteTests(unittest.TestCase):

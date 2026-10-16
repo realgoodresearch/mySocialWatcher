@@ -17,6 +17,12 @@ class RowError(BaseModel):
     message: str
 
 
+class RowResult(BaseModel):
+    source_index: int
+    status: Literal[200, 409]
+    message: str
+
+
 class BatchWriteResponse(BaseModel):
     status: Literal[200]
     received: int
@@ -24,10 +30,10 @@ class BatchWriteResponse(BaseModel):
     rejected: int
     inserted: int
     duplicates: int
+    results: list[RowResult]
     errors: list[RowError]
 
 
 class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
     service: Literal["socialwatcher-api-v2"] = "socialwatcher-api-v2"
-

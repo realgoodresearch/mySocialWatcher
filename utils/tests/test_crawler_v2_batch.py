@@ -26,7 +26,10 @@ class FakeResponse:
         return None
 
     def json(self):
-        return {"errors": []}
+        return {
+            "results": [{"source_index": 0, "status": 200, "message": "OK: row inserted."}],
+            "errors": [],
+        }
 
 
 class FakeSession:
@@ -52,6 +55,25 @@ class BatchClientTests(unittest.TestCase):
         self.assertEqual(result.loc[0, "status_api"], 200)
         self.assertEqual(list(result.columns), ["timestamp_api", "status_api", "message_api"])
         self.assertEqual(session.requests[0][1]["json"]["rows"][0]["source_index"], 0)
+
+    def test_duplicate_result_is_written_as_409(self):
+        class DuplicateResponse(FakeResponse):
+            def json(self):
+                return {
+                    "results": [{"source_index": 0, "status": 409,
+                                 "message": "Conflict: row already exists."}],
+                    "errors": [],
+                }
+
+        class DuplicateSession(FakeSession):
+            def post(self, url, **kwargs):
+                self.requests.append((url, kwargs))
+                return DuplicateResponse()
+
+        result = submit_dataframe_v2(frame(), "test", "token", "http://v2",
+                                     session=DuplicateSession())
+        self.assertEqual(result.loc[0, "status_api"], 409)
+        self.assertEqual(result.loc[0, "message_api"], "Conflict: row already exists.")
 
 
 if __name__ == "__main__":

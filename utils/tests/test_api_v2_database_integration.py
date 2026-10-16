@@ -49,13 +49,17 @@ class DatabaseIntegrationTests(unittest.TestCase):
 
     def test_bulk_insert_and_duplicate_accounting(self):
         rows = [row(0), row(1)]
-        self.assertEqual(self.writer.write("v2-test-token", "_King's study_", rows), (2, 0))
-        self.assertEqual(self.writer.write("v2-test-token", "_King's study_", rows), (0, 2))
+        self.assertEqual(self.writer.write("v2-test-token", "_King's study_", rows), {0, 1})
+        self.assertEqual(self.writer.write("v2-test-token", "_King's study_", rows), set())
         with self.engine.connect() as connection:
             count = connection.scalar(select(func.count()).select_from(AUDIENCE_TABLES["facebook"]))
             name = connection.scalar(select(collections.c.name))
         self.assertEqual(count, 2)
         self.assertEqual(name, "King's study")
+
+    def test_duplicate_rows_within_one_batch_identify_only_one_insert(self):
+        rows = [row(10), row(11, dau=110)]
+        self.assertEqual(self.writer.write("v2-test-token", "test", rows), {10})
 
     def test_unauthorized_batch_writes_nothing(self):
         with self.assertRaises(AuthenticationError):

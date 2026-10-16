@@ -3,7 +3,7 @@ from __future__ import annotations
 from pydantic import ValidationError
 
 from mysocialwatcher.api_v2.database import BatchWriter
-from mysocialwatcher.api_v2.schemas import BatchWriteRequest, BatchWriteResponse, RowError
+from mysocialwatcher.api_v2.schemas import BatchWriteRequest, BatchWriteResponse, RowError, RowResult
 from mysocialwatcher.api_v2.validation import normalize_row, validation_message
 
 
@@ -23,7 +23,18 @@ def process_batch(request: BatchWriteRequest, writer: BatchWriter) -> BatchWrite
             errors.append(RowError(source_index=source_index if isinstance(source_index, int) else position,
                                    status=400, message=validation_message(exc)))
 
-    inserted, duplicates = writer.write(request.token, request.collection, normalized)
+    inserted_indices = writer.write(request.token, request.collection, normalized)
+    results = [
+        RowResult(
+            source_index=row.source_index,
+            status=200 if row.source_index in inserted_indices else 409,
+            message=("OK: row inserted." if row.source_index in inserted_indices
+                     else "Conflict: row already exists."),
+        )
+        for row in normalized
+    ]
+    inserted = len(inserted_indices)
+    duplicates = len(normalized) - inserted
     return BatchWriteResponse(
         status=200,
         received=len(request.rows),
@@ -31,5 +42,6 @@ def process_batch(request: BatchWriteRequest, writer: BatchWriter) -> BatchWrite
         rejected=len(errors),
         inserted=inserted,
         duplicates=duplicates,
+        results=results,
         errors=errors,
     )
