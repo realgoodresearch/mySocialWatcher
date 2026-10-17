@@ -9,12 +9,12 @@ utils/backup/datahub_backup.sh
 
 It uses PostgreSQL 18 tools inside the running `datahub_db` container. The
 default destination is `/home/backup/socialwatcher/`; set `BACKUP_ROOT` to use
-another local staging location. A successful routine run creates a timestamped
+another local staging location. A successful datahub backup creates a timestamped
 directory containing a custom-format database archive, cluster globals, archive
 catalogue, metadata, and SHA-256 checksums. It verifies the archive catalogue
-before publishing it, then removes older directories named `routine-*`.
+before publishing it, then removes older directories named `datahub-db-*`.
 
-The previous local routine backup remains until the new backup has been verified
+The previous local datahub backup remains until the new backup has been verified
 and atomically published. Borg's daily archive captures the historical sequence
 before the next monthly run removes that prior local copy.
 
@@ -36,13 +36,13 @@ DATABASE_CONTAINER=datahub_db_prod POSTGRES_DB=audience POSTGRES_USER=backup \
 supported configuration variables. They affect only the current invocation
 unless you set them in the scheduler's environment.
 
-Create a protected backup before a migration with a non-routine label:
+Create a protected backup before a migration with a non-default label:
 
 ```bash
 utils/backup/datahub_backup.sh --label pre-migration-issue-5
 ```
 
-Non-routine labels are never deleted by the script. Keep that directory until
+Non-default labels are never deleted by the script. Keep that directory until
 the migration and follow-up validation are accepted.
 
 The script does not configure Borg or change PostgreSQL. It creates a logical
@@ -51,7 +51,7 @@ backup procedure, restore an archive into a disposable PostgreSQL 18 instance:
 
 ```bash
 utils/backup/datahub_restore.sh \
-  --backup-dir /home/backup/socialwatcher/routine-... \
+  --backup-dir /home/backup/socialwatcher/datahub-db-... \
   --target-container disposable-postgres-18 \
   --yes-really-restore
 ```

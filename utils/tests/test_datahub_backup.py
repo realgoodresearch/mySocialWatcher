@@ -44,24 +44,24 @@ esac
         return subprocess.run(["bash", str(SCRIPT)], text=True, capture_output=True,
                               env=environment, check=False)
 
-    def test_publishes_verified_backup_then_prunes_prior_routine_backup(self):
+    def test_publishes_verified_backup_then_prunes_prior_datahub_backup(self):
         backup_root, environment = self.prepare()
-        previous = backup_root / "routine-2000-01-01T000000Z"
+        previous = backup_root / "datahub-db-2000-01-01T000000Z"
         previous.mkdir(parents=True)
         (previous / "database.dump").write_text("old backup")
         result = self.run_backup(backup_root, environment)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(previous.exists())
-        backups = list(backup_root.glob("routine-*"))
+        backups = list(backup_root.glob("datahub-db-*"))
         self.assertEqual(len(backups), 1)
         backup = backups[0]
         for name in ("database.dump", "globals.sql", "archive-contents.txt", "metadata.txt", "checksums.sha256"):
             self.assertTrue((backup / name).is_file())
         self.assertIn("Backup completed successfully", result.stdout)
 
-    def test_failed_verification_preserves_existing_routine_backup(self):
+    def test_failed_verification_preserves_existing_datahub_backup(self):
         backup_root, environment = self.prepare(fail_restore=True)
-        previous = backup_root / "routine-2000-01-01T000000Z"
+        previous = backup_root / "datahub-db-2000-01-01T000000Z"
         previous.mkdir(parents=True)
         result = self.run_backup(backup_root, environment)
         self.assertNotEqual(result.returncode, 0)

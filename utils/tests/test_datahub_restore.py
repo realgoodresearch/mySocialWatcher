@@ -91,7 +91,7 @@ class DatahubBackupRestoreIntegrationTests(unittest.TestCase):
             backup = subprocess.run(["bash", str(ROOT / "utils" / "backup" / "datahub_backup.sh")],
                                     text=True, capture_output=True, env=environment, check=False)
             self.assertEqual(backup.returncode, 0, backup.stdout + backup.stderr)
-            directories = list(Path(temporary).glob("routine-*"))
+            directories = list(Path(temporary).glob("datahub-db-*"))
             self.assertEqual(len(directories), 1)
             restore = subprocess.run(
                 ["bash", str(SCRIPT), "--backup-dir", str(directories[0]), "--target-container", self.target,

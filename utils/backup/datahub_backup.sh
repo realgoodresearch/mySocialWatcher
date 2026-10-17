@@ -7,7 +7,8 @@ backup_root=${BACKUP_ROOT:-/home/backup/socialwatcher}
 database_container=${DATABASE_CONTAINER:-datahub_db}
 database_name=${POSTGRES_DB:-social_media_audience}
 database_user=${POSTGRES_USER:-postgres}
-backup_label=${BACKUP_LABEL:-datahub-db}
+default_backup_label=datahub-db
+backup_label=${BACKUP_LABEL:-$default_backup_label}
 
 usage() {
   cat <<'EOF'
@@ -22,9 +23,9 @@ Environment variables:
   DATABASE_CONTAINER  running PostgreSQL container (default: datahub_db)
   POSTGRES_DB         database to dump (default: social_media_audience)
   POSTGRES_USER       role used inside the container (default: postgres)
-  BACKUP_LABEL        label, equivalent to --label (default: routine)
+  BACKUP_LABEL        label, equivalent to --label (default: datahub-db)
 
-The default `routine` label removes older verified routine backups only after a
+The default `datahub-db` label removes older verified datahub backups only after a
 new backup is created and verified. Use another label, such as
 `pre-migration-issue-5`, to retain a protected backup locally.
 EOF
@@ -90,11 +91,11 @@ trap - EXIT
 printf 'Verified backup published: %s\n' "$final_dir"
 
 # Protected labels, including pre-migration backups, are never pruned here.
-if [[ $backup_label == routine ]]; then
+if [[ $backup_label == "$default_backup_label" ]]; then
   while IFS= read -r -d '' old_backup; do
-    printf 'Removing prior local routine backup: %s\n' "$old_backup"
+    printf 'Removing prior local datahub backup: %s\n' "$old_backup"
     rm -rf "$old_backup"
-  done < <(find "$backup_root" -mindepth 1 -maxdepth 1 -type d -name 'routine-*' \
+  done < <(find "$backup_root" -mindepth 1 -maxdepth 1 -type d -name "${default_backup_label}-*" \
              ! -path "$final_dir" -print0)
 fi
 
