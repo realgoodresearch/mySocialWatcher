@@ -6,10 +6,12 @@ import numpy
 import datetime
 import warnings
 from time import sleep
+from pathlib import Path
 import pandas as pd
 from ast import literal_eval
 
 from mysocialwatcher.crawler.batch import submit_dataframe_v2
+from mysocialwatcher.crawler.registry import RegistryError, RegistryObserver
 
 
 def safe_http_error_message(exc, response=None):
@@ -191,7 +193,8 @@ def governor(func, hours=1):
 
 
 def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
-            api_mode='v1', batch_size=500):
+            api_mode='v1', batch_size=500, registry_mode='off', registry_url=None,
+            crawler_instance='crawler'):
     # crawl_dir = 'data/_test'
 
     print('-----------------------------')
@@ -202,6 +205,16 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
     os.makedirs(crawl_dir, exist_ok=True)
     if api_mode not in {'v1', 'v2'}:
         raise ValueError("API_MODE must be 'v1' or 'v2'")
+    if registry_mode not in {'off', 'observe', 'enforce'}:
+        raise ValueError("REGISTRY_MODE must be 'off', 'observe', or 'enforce'")
+    if registry_mode != 'off' and api_mode != 'v2':
+        raise ValueError("REGISTRY_MODE requires API_MODE=v2")
+    if registry_mode == 'enforce':
+        raise ValueError("REGISTRY_MODE=enforce is blocked pending issue #6 refinement preference work")
+    if registry_mode == 'observe' and not registry_url:
+        raise ValueError("REGISTRY_URL is required when REGISTRY_MODE=observe")
+    observer = (RegistryObserver(registry_url, token, crawler_instance)
+                if registry_mode == 'observe' else None)
 
     # file list
     file_list = []
@@ -241,11 +254,18 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
 
             print('[' + str(datetime.datetime.now()) + '] ' + file)
 
+            attempt = None
             try:
                 # load data
                 df = pd.read_csv(file)
 
                 collection_name = file.split('/')[-3].lstrip('_')
+
+                if observer:
+                    try:
+                        attempt = observer.observe(Path(data_dir), Path(file), collection_name)
+                    except RegistryError as registry_error:
+                        warnings.warn(str(registry_error))
 
                 # write collection to SQL via API
                 if api_mode == 'v2':
@@ -265,11 +285,27 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
 
                 # save API responses
                 response.to_csv(out_path)
+
+                if attempt:
+                    status_counts = response['status_api'].value_counts().astype(int).to_dict()
+                    complete = (len(response) == len(df)
+                                and set(status_counts).issubset({200, 409}))
+                    try:
+                        observer.finish(attempt, 'completed' if complete else 'failed',
+                                        len(df), status_counts,
+                                        None if complete else 'non-terminal row outcomes')
+                    except RegistryError as registry_error:
+                        warnings.warn(str(registry_error))
                 
                 with open(temp_path, "a") as f:
                     f.write('[' + str(datetime.datetime.now()) + '] Completed' + '\n')
                 
             except Exception as e:
+                if attempt:
+                    try:
+                        observer.finish(attempt, 'failed', None, {}, type(e).__name__)
+                    except RegistryError as registry_error:
+                        warnings.warn(str(registry_error))
                 with open(temp_path, "a") as f:
                     f.write('[' + str(datetime.datetime.now()) + ']  Exception: \n' + str(e) + '\n')
                 os.rename(temp_path, error_path)

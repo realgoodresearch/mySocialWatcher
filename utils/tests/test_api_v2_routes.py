@@ -3,7 +3,7 @@ import unittest
 from fastapi.testclient import TestClient
 
 from mysocialwatcher.api_v2.database import AuthenticationError
-from mysocialwatcher.api_v2.main import app, get_writer
+from mysocialwatcher.api_v2.main import app, get_registry_writer, get_writer
 
 
 def payload():
@@ -30,6 +30,24 @@ class Writer:
         return {row.source_index for row in rows}
 
 
+class RegistryWriter:
+    def __init__(self):
+        self.calls = []
+
+    def start(self, mode, request):
+        self.calls.append(("start", mode, request))
+        return {"decision": "observe" if mode == "observe" else "process", "attempt_id": 7,
+                "attempt_token": "e0f63a70-2216-45ce-9c23-0f425d5972e0",
+                "lease_expires_at": None if mode == "observe" else "2026-01-01T00:00:00+00:00"}
+
+    def renew(self, attempt_id, request):
+        self.calls.append(("renew", attempt_id, request))
+        return "2026-01-01T00:00:00+00:00"
+
+    def finish(self, attempt_id, request):
+        self.calls.append(("finish", attempt_id, request))
+
+
 class RouteTests(unittest.TestCase):
     def tearDown(self):
         app.dependency_overrides.clear()
@@ -53,6 +71,32 @@ class RouteTests(unittest.TestCase):
         app.dependency_overrides[get_writer] = lambda: Unauthorized()
         response = TestClient(app).post("/socialwatcher/v2/write-batch", json=payload())
         self.assertEqual(response.status_code, 401)
+
+    def test_registry_routes_are_v2_and_do_not_expose_tokens(self):
+        writer = RegistryWriter()
+        app.dependency_overrides[get_registry_writer] = lambda: writer
+        request_id = "123e4567-e89b-12d3-a456-426614174000"
+        body = {
+            "token": "registry-secret", "content_sha256": "a" * 64,
+            "relative_path": "collector/file.csv.gz", "uncompressed_size": 123,
+            "collection": "collector", "crawler_instance": "crawler-1", "request_id": request_id,
+        }
+        client = TestClient(app)
+        observe = client.post("/socialwatcher/v2/files/observe", json=body)
+        claim = client.post("/socialwatcher/v2/files/claim", json=body)
+        self.assertEqual((observe.status_code, observe.json()["decision"]), (200, "observe"))
+        self.assertEqual((claim.status_code, claim.json()["decision"]), (200, "process"))
+        secret = observe.json()["attempt_token"]
+        renew = client.post("/socialwatcher/v2/file-attempts/7/renew", json={
+            "token": "registry-secret", "attempt_token": secret,
+        })
+        finish = client.post("/socialwatcher/v2/file-attempts/7/finish", json={
+            "token": "registry-secret", "attempt_token": secret, "outcome": "completed",
+            "total_rows": 1, "rows_200": 1,
+        })
+        self.assertEqual(renew.status_code, 200)
+        self.assertEqual(finish.status_code, 204)
+        self.assertEqual([call[0] for call in writer.calls], ["start", "start", "renew", "finish"])
 
     def test_validation_error_does_not_echo_token_or_request_values(self):
         secret = "never-echo-this-token"

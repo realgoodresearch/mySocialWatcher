@@ -7,6 +7,9 @@ url = os.environ.get('API_URL')  # url = 'http://127.0.0.1/api/v1/write' / ASW A
 data_dir = os.environ.get('DATA_DIR')  # data_dir = 'C:/Users/edithd/Documents/mySocialWatcher/data/saffron'
 api_mode = os.environ.get('API_MODE', 'v1').lower()
 api_batch_size = int(os.environ.get('API_BATCH_SIZE', '500'))
+registry_mode = os.environ.get('REGISTRY_MODE', 'off').lower()
+registry_url = os.environ.get('REGISTRY_URL')
+registry_instance = os.environ.get('CRAWLER_INSTANCE', 'crawler')
 
 
 if __name__ == "__main__":
@@ -15,4 +18,7 @@ if __name__ == "__main__":
             token=token,
             url=url,
             api_mode=api_mode,
-            batch_size=api_batch_size)
+            batch_size=api_batch_size,
+            registry_mode=registry_mode,
+            registry_url=registry_url,
+            crawler_instance=registry_instance)

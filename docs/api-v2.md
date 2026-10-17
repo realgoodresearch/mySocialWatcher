@@ -172,6 +172,23 @@ reruns and checksums, transaction rollback, concurrent migration runners, four
 concurrent claimers, lease expiry, retry history, and terminal outcome enforcement.
 The existing smaller API v2 test fixture remains available for ingestion tests.
 
+### Observation-mode registry workflow
+
+Migration `0003_crawler_registry_observation_api.sql` adds authenticated API v2
+routes for `files/observe`, `files/claim`, lease renewal, and attempt completion.
+Only observation mode is enabled in the crawler at this stage. Set
+`API_MODE=v2`, `REGISTRY_MODE=observe`, `REGISTRY_URL` to the API v2 base URL,
+and a stable `CRAWLER_INSTANCE` to opt in. `REGISTRY_MODE=off` remains the
+default. Observation failures warn and do not prevent ingestion, CSV logging, or
+the existing CSV-log skip rule. The crawler streams a SHA-256 over decompressed
+CSV bytes, retains a separate archive hash, and sends only aggregate final HTTP
+status counts to the registry.
+
+`REGISTRY_MODE=enforce` is intentionally rejected until issue #6 establishes
+order-independent better-estimate preference. Observed successful 409 outcomes
+are diagnostic data, not permission to skip a file. No registry migration or
+crawler configuration has been applied to production by this change.
+
 ## Registry next-step design (pending implementation)
 
 This section records preparation for issue #5 while the daily crawl and issue #4 /
