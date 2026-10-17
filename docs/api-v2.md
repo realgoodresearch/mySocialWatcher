@@ -172,6 +172,18 @@ reruns and checksums, transaction rollback, concurrent migration runners, four
 concurrent claimers, lease expiry, retry history, and terminal outcome enforcement.
 The existing smaller API v2 test fixture remains available for ingestion tests.
 
+Run the isolated API/crawler integration test with:
+
+```bash
+RUN_REGISTRY_E2E_TEST=1 python3 -m unittest utils.tests.test_registry_rebuild.RegistryEndToEndTests -v
+```
+
+It starts a fresh PostgreSQL database on tmpfs, the API v2 container, and a
+crawler container on a unique internal-only Docker network. It verifies that
+observation mode calls the real API routes, records the decompressed content
+identity and terminal row counts, and still writes the existing CSV diagnostic
+log. It publishes no ports and removes all disposable resources after the test.
+
 ### Observation-mode registry workflow
 
 Migration `0003_crawler_registry_observation_api.sql` adds authenticated API v2

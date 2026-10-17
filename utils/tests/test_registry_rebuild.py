@@ -176,5 +176,88 @@ class RegistryRebuildTests(unittest.TestCase):
         self.assertIn('checksum mismatch', result.stderr)
 
 
+@unittest.skipUnless(os.environ.get('RUN_REGISTRY_E2E_TEST') == '1',
+                     'opt-in isolated registry API/crawler end-to-end test')
+class RegistryEndToEndTests(unittest.TestCase):
+    """Uses only unique, disposable containers on an isolated Docker network."""
+
+    @classmethod
+    def docker(cls, *args, input=None, check=True):
+        return subprocess.run(['docker', *args], input=input, text=True,
+                              capture_output=True, check=check)
+
+    @classmethod
+    def setUpClass(cls):
+        suffix = uuid.uuid4().hex[:12]
+        cls.network = f'socialwatcher-registry-e2e-{suffix}'
+        cls.database = f'socialwatcher-registry-db-{suffix}'
+        cls.api = f'socialwatcher-registry-api-{suffix}'
+        cls.docker('network', 'create', '--internal', cls.network)
+        cls.addClassCleanup(lambda: cls.docker('network', 'rm', cls.network, check=False))
+        cls.docker('run', '--detach', '--name', cls.database, '--network', cls.network,
+                   '--tmpfs', '/var/lib/postgresql',
+                   '-e', 'POSTGRES_USER=registry_test', '-e', 'POSTGRES_DB=registry_test',
+                   '-e', 'POSTGRES_PASSWORD=disposable-test-only',
+                   '-e', 'POSTGRES_WPASS=writer-test', '-e', 'POSTGRES_RPASS=reader-test',
+                   '-v', f'{ROOT}/docker/datahub/migrations:/schema/migrations:ro',
+                   '-v', f'{ROOT}/docker/datahub/migrate.sh:/schema/migrate.sh:ro',
+                   '-v', f'{ROOT}/docker/datahub/initdb.sh:/docker-entrypoint-initdb.d/initdb.sh:ro',
+                   'postgres:18')
+        cls.addClassCleanup(lambda: cls.docker('rm', '-f', cls.database, check=False))
+        ready = cls.docker('exec', cls.database, 'bash', '-c',
+                           'for i in {1..60}; do '
+                           'pg_isready -h 127.0.0.1 -U registry_test -d registry_test >/dev/null && '
+                           'psql -U registry_test -d registry_test -Atc "SELECT count(*) FROM schema_migrations" '
+                           '2>/dev/null | grep -qx 3 && exit 0; sleep 1; done; exit 1', check=False)
+        if ready.returncode:
+            raise RuntimeError(cls.docker('logs', cls.database).stdout)
+        cls.docker('exec', cls.database, 'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', 'registry_test',
+                   '-d', 'registry_test', '-c',
+                   "UPDATE tokens SET token = 'registry-e2e-token' WHERE contributor_id = 1 AND write;")
+        cls.docker('run', '--detach', '--name', cls.api, '--network', cls.network,
+                   '--network-alias', 'api',
+                   '-e', 'SOCIALWATCHER_V2_DATABASE_URL='
+                   'postgresql+psycopg://writer:writer-test@' + cls.database + ':5432/registry_test',
+                   '-v', f'{ROOT}:/app:ro', 'datahub-datahub_api_v2')
+        cls.addClassCleanup(lambda: cls.docker('rm', '-f', cls.api, check=False))
+        ready = cls.docker('exec', cls.api, 'bash', '-c',
+                           'for i in {1..60}; do python -c '
+                           '"import urllib.request; urllib.request.urlopen(\'http://127.0.0.1:8001/socialwatcher/v2/health\', timeout=1)" '
+                           '&& exit 0; sleep 1; done; exit 1', check=False)
+        if ready.returncode:
+            raise RuntimeError(cls.docker('logs', cls.api).stdout + cls.docker('logs', cls.api).stderr)
+
+    def sql(self, statement):
+        return self.docker('exec', self.database, 'psql', '-X', '-v', 'ON_ERROR_STOP=1',
+                           '-U', 'registry_test', '-d', 'registry_test', '-Atc', statement).stdout.strip()
+
+    def test_observe_mode_crawler_uses_actual_v2_routes_and_keeps_csv_log(self):
+        program = r'''
+import gzip
+from pathlib import Path
+from mysocialwatcher.crawler.utils import crawler
+root = Path('/work/data')
+source = root / 'collector/finished/dataframe_collected_finished_fixture.csv.gz'
+source.parent.mkdir(parents=True)
+source.write_bytes(gzip.compress(
+    b"publisher_platforms,timestamp,genders,ages_ranges,dau_audience,mau_audience,all_fields,targeting,response\n"
+    b"['facebook'],1722470400,0,\"{'min': 18, 'max': 65}\",100,200,\"{'geo_locations': {'name': 'countries', 'values': ['GB']}}\",{},\"{\"\"data\"\": [{\"\"estimate_ready\"\": true}]}\"\n"))
+crawler(str(root), 'registry-e2e-token', 'http://api:8001/socialwatcher/v2/write-batch',
+        api_mode='v2', registry_mode='observe', registry_url='http://api:8001/socialwatcher/v2',
+        crawler_instance='e2e-crawler')
+assert (root / 'crawler/collector/finished/dataframe_collected_finished_fixture_log.csv.gz').exists()
+'''
+        result = self.docker('run', '--rm', '--network', self.network, '--tmpfs', '/work',
+                             '-v', f'{ROOT}:/app:ro', '-w', '/app', 'crawler-crawler',
+                             'python', '-c', program, check=False)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.sql("SELECT content_sha256 ~ '^[0-9a-f]{64}$' FROM crawler_files;"), 't',
+                         result.stdout + result.stderr + self.docker('logs', self.api).stdout
+                         + self.docker('logs', self.database).stdout)
+        self.assertEqual(self.sql("SELECT relative_path, attempt_mode, outcome, total_rows, rows_200, rows_409 "
+                                  "FROM crawler_file_attempts;"),
+                         'collector/finished/dataframe_collected_finished_fixture.csv.gz|observe|completed|1|1|0')
+
+
 if __name__ == '__main__':
     unittest.main()

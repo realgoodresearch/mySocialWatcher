@@ -212,9 +212,20 @@ class RegistryWriter:
                 params.pop("token")
                 if mode == "observe":
                     params.pop("lease_seconds")
+                    statement = text(f"""SELECT * FROM {function}(
+                        CAST(:p_hash AS text), CAST(:p_path AS text), CAST(:p_size AS bigint),
+                        CAST(:p_collection AS text), CAST(:p_instance AS text),
+                        CAST(:p_contributor_id AS integer), CAST(:p_request_id AS uuid),
+                        CAST(:p_archive_hash AS text), CAST(:p_archive_size AS bigint))""")
                 else:
                     params["p_lease_seconds"] = params.pop("lease_seconds")
-                row = connection.execute(text(f"SELECT * FROM {function}({', '.join(':' + key for key in params)})"), params).mappings().one()
+                    statement = text(f"""SELECT * FROM {function}(
+                        CAST(:p_hash AS text), CAST(:p_path AS text), CAST(:p_size AS bigint),
+                        CAST(:p_collection AS text), CAST(:p_instance AS text),
+                        CAST(:p_contributor_id AS integer), CAST(:p_request_id AS uuid),
+                        CAST(:p_lease_seconds AS integer), CAST(:p_archive_hash AS text),
+                        CAST(:p_archive_size AS bigint))""")
+                row = connection.execute(statement, params).mappings().one()
                 return self._start_result(row)
         except AuthenticationError:
             raise
