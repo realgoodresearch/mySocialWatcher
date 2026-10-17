@@ -62,6 +62,9 @@ The database and API can be launched as background processes by executing `docke
 
 Once running the API can be accessed from `https://localhost/api/v1` and the database connection is available on localhost port 5432.
 
+For the routine logical-backup workflow used with Borg, see
+[Datahub logical backups](docs/datahub-backups.md).
+
 ### Crawlers
 The crawlers require an environment file to exist in `./docker/crawler/.env` to define a data directory and datahub API credentials.
 
