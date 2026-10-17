@@ -1,0 +1,39 @@
+services:
+  v2_test_db:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: socialwatcher_v2_test
+      POSTGRES_USER: v2_test
+      POSTGRES_PASSWORD: v2_test_only
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U v2_test -d socialwatcher_v2_test"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - v2_test_postgres:/var/lib/postgresql
+      - ./test_init.sql:/docker-entrypoint-initdb.d/test_init.sql:ro
+    networks:
+      - v2_test_net
+
+  v2_test_api:
+    build:
+      context: ../..
+      dockerfile: docker/api_v2/Dockerfile
+    environment:
+      SOCIALWATCHER_V2_DATABASE_URL: postgresql+psycopg://v2_test:v2_test_only@v2_test_db:5432/socialwatcher_v2_test
+    depends_on:
+      v2_test_db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8001:8001"
+    networks:
+      - v2_test_net
+
+networks:
+  v2_test_net:
+
+volumes:
+  v2_test_postgres:
