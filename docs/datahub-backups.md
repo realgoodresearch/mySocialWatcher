@@ -61,6 +61,14 @@ in the explicitly named target container. It never chooses a target container
 by default. Add `--restore-globals` only in an isolated instance or with a
 deliberate role-recovery plan, because `globals.sql` creates cluster-wide roles.
 
+The repository's opt-in integration test performs this backup and restore flow
+against two isolated PostgreSQL 18 containers:
+
+```bash
+RUN_DATAHUB_BACKUP_RESTORE_TEST=1 \
+  python3 -m unittest utils.tests.test_datahub_restore.DatahubBackupRestoreIntegrationTests -v
+```
+
 ## Monthly systemd timer
 
 Install the repository-managed units on the datahub host after the branch has
@@ -74,8 +82,9 @@ sudo systemctl enable --now socialwatcher-datahub-backup.timer
 ```
 
 The timer runs monthly at 02:00 UTC with up to 15 minutes of jitter and records
-output in the system journal. Schedule Borg after this window so it can capture
-the newest local dump. Check the next scheduled run and the most recent result:
+output in the system journal. Schedule Borg after the backup normally completes
+so it can capture the newest local dump. Check the next scheduled run and the
+most recent result:
 
 ```bash
 systemctl list-timers socialwatcher-datahub-backup.timer
