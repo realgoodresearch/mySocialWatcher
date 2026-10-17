@@ -50,9 +50,13 @@ dump only; it does not provide point-in-time recovery. Before relying on a new
 backup procedure, restore an archive into a disposable PostgreSQL 18 instance:
 
 ```bash
-pg_restore --clean --create --exit-on-error --dbname=postgres \
-  /home/backup/socialwatcher/routine-.../database.dump
+utils/datahub_restore.sh \
+  --backup-dir /home/backup/socialwatcher/routine-... \
+  --target-container disposable-postgres-18 \
+  --yes-really-restore
 ```
 
-Restore `globals.sql` only in an isolated instance or with a deliberate role
-recovery plan, because it creates cluster-wide roles.
+The restore script verifies checksums before it drops and recreates the database
+in the explicitly named target container. It never chooses a target container
+by default. Add `--restore-globals` only in an isolated instance or with a
+deliberate role-recovery plan, because `globals.sql` creates cluster-wide roles.
