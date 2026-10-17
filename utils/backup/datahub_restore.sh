@@ -10,7 +10,7 @@ confirmed=false
 
 usage() {
   cat <<'EOF'
-Usage: utils/datahub_restore.sh --backup-dir DIRECTORY --target-container CONTAINER \
+Usage: utils/backup/datahub_restore.sh --backup-dir DIRECTORY --target-container CONTAINER \
   --yes-really-restore [--restore-globals]
 
 This verifies checksums before restoring. It drops and recreates the database in

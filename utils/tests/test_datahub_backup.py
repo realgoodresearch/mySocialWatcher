@@ -9,7 +9,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "utils" / "datahub_backup.sh"
+SCRIPT = ROOT / "utils" / "backup" / "datahub_backup.sh"
 
 
 class DatahubBackupScriptTests(unittest.TestCase):

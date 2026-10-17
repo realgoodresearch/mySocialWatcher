@@ -11,11 +11,11 @@ backup_label=${BACKUP_LABEL:-routine}
 
 usage() {
   cat <<'EOF'
-Usage: utils/datahub_backup.sh [--label NAME]
+Usage: utils/backup/datahub_backup.sh [--label NAME]
 
 Configuration is set with environment variables, for example:
-  BACKUP_ROOT=/mnt/backups/socialwatcher utils/datahub_backup.sh
-  DATABASE_CONTAINER=datahub_db_prod POSTGRES_DB=audience utils/datahub_backup.sh
+  BACKUP_ROOT=/mnt/backups/socialwatcher utils/backup/datahub_backup.sh
+  DATABASE_CONTAINER=datahub_db_prod POSTGRES_DB=audience utils/backup/datahub_backup.sh
 
 Environment variables:
   BACKUP_ROOT         local destination (default: /home/backup/socialwatcher)
