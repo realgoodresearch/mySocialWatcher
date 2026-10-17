@@ -7,7 +7,7 @@ backup_root=${BACKUP_ROOT:-/home/backup/socialwatcher}
 database_container=${DATABASE_CONTAINER:-datahub_db}
 database_name=${POSTGRES_DB:-social_media_audience}
 database_user=${POSTGRES_USER:-postgres}
-backup_label=${BACKUP_LABEL:-routine}
+backup_label=${BACKUP_LABEL:-datahub-db}
 
 usage() {
   cat <<'EOF'
