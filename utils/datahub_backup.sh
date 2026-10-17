@@ -13,6 +13,17 @@ usage() {
   cat <<'EOF'
 Usage: utils/datahub_backup.sh [--label NAME]
 
+Configuration is set with environment variables, for example:
+  BACKUP_ROOT=/mnt/backups/socialwatcher utils/datahub_backup.sh
+  DATABASE_CONTAINER=datahub_db_prod POSTGRES_DB=audience utils/datahub_backup.sh
+
+Environment variables:
+  BACKUP_ROOT         local destination (default: /home/backup/socialwatcher)
+  DATABASE_CONTAINER  running PostgreSQL container (default: datahub_db)
+  POSTGRES_DB         database to dump (default: social_media_audience)
+  POSTGRES_USER       role used inside the container (default: postgres)
+  BACKUP_LABEL        label, equivalent to --label (default: routine)
+
 The default `routine` label removes older verified routine backups only after a
 new backup is created and verified. Use another label, such as
 `pre-migration-issue-5`, to retain a protected backup locally.

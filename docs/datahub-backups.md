@@ -18,6 +18,24 @@ The previous local routine backup remains until the new backup has been verified
 and atomically published. Borg's daily archive captures the historical sequence
 before the next monthly run removes that prior local copy.
 
+Configure it with environment variables preceding the command:
+
+```bash
+# Defaults: /home/backup/socialwatcher/, datahub_db, social_media_audience, postgres
+utils/datahub_backup.sh
+
+# Different local destination
+BACKUP_ROOT=/mnt/backup/socialwatcher utils/datahub_backup.sh
+
+# Different container, database, or database role
+DATABASE_CONTAINER=datahub_db_prod POSTGRES_DB=audience POSTGRES_USER=backup \
+  utils/datahub_backup.sh
+```
+
+`BACKUP_ROOT`, `DATABASE_CONTAINER`, `POSTGRES_DB`, and `POSTGRES_USER` are the
+supported configuration variables. They affect only the current invocation
+unless you set them in the scheduler's environment.
+
 Create a protected backup before a migration with a non-routine label:
 
 ```bash
