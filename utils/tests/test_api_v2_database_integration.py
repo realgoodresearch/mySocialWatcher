@@ -1,7 +1,9 @@
 import os
+import json
 import unittest
+from pathlib import Path
 
-from sqlalchemy import create_engine, func, select
+from sqlalchemy import create_engine, func, insert, select
 
 from mysocialwatcher.api_v2.database import (
     AUDIENCE_TABLES,
@@ -13,6 +15,7 @@ from mysocialwatcher.api_v2.validation import normalize_row
 
 
 DATABASE_URL = os.environ.get("SOCIALWATCHER_V2_TEST_DATABASE_URL")
+REAL_FIXTURE = os.environ.get("SOCIALWATCHER_V2_REAL_FIXTURE")
 
 
 def row(source_index=0, **changes):
@@ -60,6 +63,95 @@ class DatabaseIntegrationTests(unittest.TestCase):
     def test_duplicate_rows_within_one_batch_identify_only_one_insert(self):
         rows = [row(10), row(11, dau=110)]
         self.assertEqual(self.writer.write("v2-test-token", "test", rows), {10})
+
+    def test_refinement_replaces_original_measurements(self):
+        original = row(0, dau=100, mau=200, mau_lower=180, mau_upper=220,
+                       all_fields={"query": "original"})
+        refined = row(1, dau=100, mau=210, mau_lower=-1, mau_upper=230,
+                      all_fields={"query": "refined", "better_estimates": True})
+
+        self.assertEqual(self.writer.write("v2-test-token", "test", [original]), {0})
+        self.assertEqual(self.writer.write("v2-test-token", "test", [refined]), {1})
+
+        with self.engine.connect() as connection:
+            stored = connection.execute(select(AUDIENCE_TABLES["facebook"])).mappings().one()
+        self.assertEqual((stored["mau"], stored["mau_lower"], stored["mau_upper"]),
+                         (210, -1, 230))
+        self.assertTrue(stored["all_fields"]["better_estimates"])
+
+    def test_original_does_not_replace_refinement(self):
+        refined = row(0, dau=100, mau=210, mau_lower=-1, mau_upper=230,
+                      all_fields={"better_estimates": True})
+        original = row(1, dau=100, mau=200, mau_lower=180, mau_upper=220,
+                       all_fields={"query": "original"})
+
+        self.assertEqual(self.writer.write("v2-test-token", "test", [refined]), {0})
+        self.assertEqual(self.writer.write("v2-test-token", "test", [original]), set())
+
+        with self.engine.connect() as connection:
+            stored = connection.execute(select(AUDIENCE_TABLES["facebook"])).mappings().one()
+        self.assertEqual(stored["mau"], 210)
+        self.assertTrue(stored["all_fields"]["better_estimates"])
+
+    def test_same_provenance_keeps_existing_row(self):
+        original = row(0, dau=100, mau=200, all_fields={"query": "first"})
+        later_original = row(1, dau=100, mau=300, all_fields={"query": "second"})
+        refined = row(2, dau=101, mau=400, all_fields={"better_estimates": True})
+        later_refined = row(3, dau=101, mau=500, all_fields={"better_estimates": True})
+
+        self.assertEqual(self.writer.write("v2-test-token", "test", [original]), {0})
+        self.assertEqual(self.writer.write("v2-test-token", "test", [later_original]), set())
+        self.assertEqual(self.writer.write("v2-test-token", "test", [refined]), {2})
+        self.assertEqual(self.writer.write("v2-test-token", "test", [later_refined]), set())
+
+        with self.engine.connect() as connection:
+            stored = connection.execute(
+                select(AUDIENCE_TABLES["facebook"].c.dau, AUDIENCE_TABLES["facebook"].c.mau)
+                .order_by(AUDIENCE_TABLES["facebook"].c.dau)
+            ).all()
+        self.assertEqual(stored, [(100, 200), (101, 400)])
+
+    def test_batch_duplicate_prefers_refinement(self):
+        original = row(10, dau=100, mau=200, all_fields={"query": "original"})
+        refined = row(11, dau=100, mau=210,
+                      all_fields={"better_estimates": True})
+
+        self.assertEqual(self.writer.write("v2-test-token", "test", [original, refined]), {11})
+        with self.engine.connect() as connection:
+            stored = connection.execute(select(AUDIENCE_TABLES["facebook"])).mappings().one()
+        self.assertEqual(stored["mau"], 210)
+        self.assertTrue(stored["all_fields"]["better_estimates"])
+
+    @unittest.skipUnless(REAL_FIXTURE, "controlled production fixture not configured")
+    def test_real_original_is_promoted_by_its_refinement(self):
+        fixture = json.loads(Path(REAL_FIXTURE).read_text(encoding="utf-8"))
+        stored = fixture["stored"]
+        with self.engine.begin() as connection:
+            collection_id = connection.execute(
+                insert(collections).values(name=stored["collection"]).returning(collections.c.id)
+            ).scalar_one()
+            values = {
+                key: value for key, value in stored.items()
+                if key in AUDIENCE_TABLES[stored["platform"]].c
+            }
+            values.update(collection_id=collection_id, contributor_id=1)
+            connection.execute(insert(AUDIENCE_TABLES[stored["platform"]]).values(values))
+
+        refinement = normalize_row(fixture["incoming_refinement"])
+        self.assertEqual(
+            self.writer.write("v2-test-token", stored["collection"], [refinement]),
+            {refinement.source_index},
+        )
+
+        with self.engine.connect() as connection:
+            promoted = connection.execute(
+                select(AUDIENCE_TABLES[stored["platform"]])
+            ).mappings().one()
+        self.assertEqual(
+            (promoted["mau"], promoted["mau_lower"], promoted["mau_upper"]),
+            (refinement.mau, refinement.mau_lower, refinement.mau_upper),
+        )
+        self.assertTrue(promoted["all_fields"]["better_estimates"])
 
     def test_unauthorized_batch_writes_nothing(self):
         with self.assertRaises(AuthenticationError):

@@ -22,6 +22,20 @@ def parse_response(value):
     raise ValueError("unrecognized response representation")
 
 
+def mark_better_estimates(dataframe: pd.DataFrame) -> pd.DataFrame:
+    """Return a copy with explicit provenance for legacy refinement files."""
+    marked = dataframe.copy()
+
+    def add_marker(value):
+        parsed = literal_eval(value) if isinstance(value, str) else value
+        fields = dict(parsed)
+        fields["better_estimates"] = True
+        return repr(tuple(fields.items()))
+
+    marked["all_fields"] = marked["all_fields"].apply(add_marker)
+    return marked
+
+
 def dataframe_to_v2_rows(dataframe: pd.DataFrame) -> tuple[list[dict], dict[int, str]]:
     rows: list[dict] = []
     errors: dict[int, str] = {}

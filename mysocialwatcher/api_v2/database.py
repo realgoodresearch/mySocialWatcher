@@ -15,7 +15,11 @@ from sqlalchemy import (
     SmallInteger,
     String,
     Table,
+    Text,
+    cast,
     create_engine,
+    false,
+    func,
     select,
 )
 from sqlalchemy.dialects.postgresql import JSONB, insert
@@ -149,13 +153,41 @@ class BatchWriter:
                 )
                 for table_name, items in grouped.items():
                     table = AUDIENCE_TABLES[table_name]
-                    pending: dict[tuple, deque[int]] = defaultdict(deque)
+                    selected: dict[tuple, tuple[NormalizedRow, dict]] = {}
                     for row, values in items:
+                        identity = _row_identity(values)
+                        current = selected.get(identity)
+                        if current is None or (_is_refined(values) and not _is_refined(current[1])):
+                            selected[identity] = (row, values)
+                    pending: dict[tuple, deque[int]] = defaultdict(deque)
+                    for row, values in selected.values():
                         pending[_row_identity(values)].append(row.source_index)
+                    statement = insert(table).values(
+                        [values for _, values in selected.values()]
+                    )
+                    refinement_marker = {"better_estimates": True}
                     result = connection.execute(
-                        insert(table)
-                        .values([values for _, values in items])
-                        .on_conflict_do_nothing()
+                        statement.on_conflict_do_update(
+                            index_elements=[
+                                table.c.country, table.c.collection_date, table.c.gender,
+                                table.c.age_min, table.c.age_max, table.c.dau,
+                                func.md5(cast(table.c.geo_locations, Text)),
+                                func.md5(cast(table.c.targeting, Text)),
+                                func.md5(cast(table.c.response, Text)),
+                            ],
+                            set_={
+                                "mau": statement.excluded.mau,
+                                "mau_lower": statement.excluded.mau_lower,
+                                "mau_upper": statement.excluded.mau_upper,
+                                "all_fields": statement.excluded.all_fields,
+                            },
+                            where=(
+                                statement.excluded.all_fields.contains(refinement_marker)
+                                & ~func.coalesce(
+                                    table.c.all_fields.contains(refinement_marker), false()
+                                )
+                            ),
+                        )
                         .returning(*(table.c[name] for name in identity_columns))
                     )
                     for inserted in result.mappings():
@@ -177,3 +209,7 @@ def _row_identity(values) -> tuple:
         canonical(values["geo_locations"]), canonical(values.get("targeting") or {}),
         canonical(values["response"]),
     )
+
+
+def _is_refined(values) -> bool:
+    return values.get("all_fields", {}).get("better_estimates") is True

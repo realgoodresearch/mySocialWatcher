@@ -3,7 +3,11 @@ import unittest
 
 import pandas as pd
 
-from mysocialwatcher.crawler.batch import dataframe_to_v2_rows, submit_dataframe_v2
+from mysocialwatcher.crawler.batch import (
+    dataframe_to_v2_rows,
+    mark_better_estimates,
+    submit_dataframe_v2,
+)
 
 
 def frame():
@@ -42,6 +46,15 @@ class FakeSession:
 
 
 class BatchClientTests(unittest.TestCase):
+    def test_marks_legacy_refinement_without_mutating_source(self):
+        source = frame()
+        marked = mark_better_estimates(source)
+        rows, errors = dataframe_to_v2_rows(marked)
+
+        self.assertFalse(errors)
+        self.assertTrue(rows[0]["all_fields"]["better_estimates"])
+        self.assertNotIn("better_estimates", source.loc[0, "all_fields"])
+
     def test_converts_legacy_fields_to_json_objects(self):
         rows, errors = dataframe_to_v2_rows(frame())
         self.assertFalse(errors)

@@ -67,6 +67,9 @@ or engineering rule.
 
 - Be concise. Prefer simple solutions that achieve the goal over unnecessary
   complexity.
+- Disagree with the user when evidence supports further debate, discussion, or
+  clarification. State the evidence and concern directly so the team can make
+  a better decision.
 - When requirements, data behavior, or operational facts are unclear, ask the
   user rather than continuing from an assumption.
 - Design long-running processes to run independently, with results that can be

@@ -9,7 +9,7 @@ from time import sleep
 import pandas as pd
 from ast import literal_eval
 
-from mysocialwatcher.crawler.batch import submit_dataframe_v2
+from mysocialwatcher.crawler.batch import mark_better_estimates, submit_dataframe_v2
 
 
 def safe_http_error_message(exc, response=None):
@@ -244,6 +244,9 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
             try:
                 # load data
                 df = pd.read_csv(file)
+
+                if "_betterestimate.csv" in os.path.basename(file):
+                    df = mark_better_estimates(df)
 
                 collection_name = file.split('/')[-3].lstrip('_')
 
