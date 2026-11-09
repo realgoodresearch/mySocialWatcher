@@ -49,6 +49,20 @@ or engineering rule.
   advise rotation/revocation where appropriate, and use environment variables
   or the project-approved secret mechanism instead.
 
+## Production safety
+
+- Treat API v2 and its database as production services. Do not run tests
+  against production containers or the production database.
+- Test API and database changes with a separate test API container and a
+  separate test database. Keep their containers, networks, volumes, ports,
+  credentials, and configuration isolated from production.
+- Complete the relevant tests successfully in the isolated environment before
+  modifying, rebuilding, restarting, or deploying the production API or
+  changing the production database.
+- Obtain the user's explicit approval before modifying, rebuilding,
+  restarting, or deploying a production service or applying a production
+  database change.
+
 ## Collaboration and efficiency
 
 - Be concise. Prefer simple solutions that achieve the goal over unnecessary
