@@ -49,3 +49,14 @@ or engineering rule.
   advise rotation/revocation where appropriate, and use environment variables
   or the project-approved secret mechanism instead.
 
+## Collaboration and efficiency
+
+- Be concise. Prefer simple solutions that achieve the goal over unnecessary
+  complexity.
+- When requirements, data behavior, or operational facts are unclear, ask the
+  user rather than continuing from an assumption.
+- Design long-running processes to run independently, with results that can be
+  checked periodically and safely stopped when appropriate. Do not
+  continuously poll them.
+- Conserve tokens by reporting only material progress and avoiding needless
+  monitoring of long-running processes.
