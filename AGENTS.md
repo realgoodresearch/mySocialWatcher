@@ -1,0 +1,51 @@
+# Repository workflow
+
+This file is the working agreement for people and agents contributing to this
+repository. Keep it current when the team adopts or changes a material process
+or engineering rule.
+
+## Issue-driven work
+
+1. Start work with a GitHub issue that states the problem, desired outcome,
+   scope, and important constraints or non-goals. Create one when an existing
+   issue does not adequately do so.
+2. Create an issue-scoped branch from `main`, using a descriptive name such as
+   `issue-<number>-<short-description>`. Associate the branch with the issue
+   through its pull request and add an issue comment identifying the branch
+   when that aids collaborators.
+3. Keep the issue current with concise progress comments, design decisions,
+   blockers, and invitations for relevant contribution. Do not disclose
+   credentials, tokens, personal data, or other secrets in issues, commits, or
+   pull requests.
+4. Write issues, comments, and pull requests in clear, concise language. State
+   the decision, rationale, scope, and validation; link related issues, commits,
+   and pull requests where useful.
+5. Commit at logical development milestones. Keep each commit focused on one
+   logical change. Use a concise imperative subject, reference its issue, and
+   explain non-obvious rationale in the body. Do not mix behavior changes with
+   unrelated refactoring or formatting.
+6. Before every commit, request the user's review and explicit confirmation,
+   unless the user explicitly asks for that commit to be made. Do not commit
+   untested or unreviewed work.
+7. Before requesting review, run the relevant validation and report what ran,
+   its result, and any validation that remains outstanding.
+8. Record material design decisions in the issue or a versioned design
+   document, rather than only in chat or code review. Update relevant tests and
+   documentation with behavior changes.
+9. When ready, open a pull request from the issue branch into `main`. Link the
+   issue so it closes on merge, summarize the implementation and validation,
+   and request review.
+10. Merge only after approval. Then delete the issue branch and confirm the
+   linked issue is closed. Do not force-push, rewrite shared history, or merge
+   without explicit user authorization.
+
+## Working-tree safety
+
+- Inspect `git status` before edits, commits, branch switches, and other Git
+  operations that could affect existing work.
+- Preserve unrelated user changes. Never add, alter, delete, or commit them
+  without explicit authorization.
+- Keep secrets out of the repository. If one is found, leave it unexposed,
+  advise rotation/revocation where appropriate, and use environment variables
+  or the project-approved secret mechanism instead.
+
