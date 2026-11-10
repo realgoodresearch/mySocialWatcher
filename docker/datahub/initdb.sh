@@ -67,6 +67,7 @@ CREATE TABLE facebook (
 	collection_id INT REFERENCES collections(id) ON DELETE SET NULL,
 	contributor_id INT REFERENCES contributors(id) ON DELETE SET NULL,
   contributed_on TIMESTAMPTZ(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0),
+  updated_on TIMESTAMPTZ(0),
   collection_date DATE NOT NULL,
   country CHAR(2) NOT NULL,
   gender SMALLINT NOT NULL,
@@ -98,7 +99,7 @@ CREATE INDEX age_fb_idx ON facebook(age_min, age_max);
 
 GRANT SELECT ON facebook TO reader;
 GRANT SELECT,INSERT ON facebook TO writer;
-GRANT UPDATE (mau, mau_lower, mau_upper, all_fields) ON facebook TO writer;
+GRANT UPDATE (mau, mau_lower, mau_upper, all_fields, updated_on) ON facebook TO writer;
 "
 
 # create facebook partitions by country
@@ -117,6 +118,7 @@ CREATE TABLE facebook_invalid (
 	collection_id INT REFERENCES collections(id) ON DELETE SET NULL,
 	contributor_id INT REFERENCES contributors(id) ON DELETE SET NULL,
   contributed_on TIMESTAMPTZ(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0),
+  updated_on TIMESTAMPTZ(0),
   collection_date DATE NOT NULL,
   country CHAR(2) NOT NULL,
   gender SMALLINT NOT NULL,
@@ -140,7 +142,7 @@ create unique index unique_fb_invalid_idx
 
 GRANT SELECT ON facebook_invalid TO reader;
 GRANT SELECT,INSERT ON facebook_invalid TO writer;
-GRANT UPDATE (mau, mau_lower, mau_upper, all_fields) ON facebook_invalid TO writer;
+GRANT UPDATE (mau, mau_lower, mau_upper, all_fields, updated_on) ON facebook_invalid TO writer;
 "
 
 # instagram
@@ -150,6 +152,7 @@ CREATE TABLE instagram (
 	collection_id INT REFERENCES collections(id) ON DELETE SET NULL,
 	contributor_id INT REFERENCES contributors(id) ON DELETE SET NULL,
   contributed_on TIMESTAMPTZ(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0),
+  updated_on TIMESTAMPTZ(0),
   collection_date DATE NOT NULL,
   country CHAR(2) NOT NULL,
   gender SMALLINT NOT NULL,
@@ -179,7 +182,7 @@ CREATE INDEX age_ig_idx ON instagram(age_min, age_max);
 
 GRANT SELECT ON instagram TO reader;
 GRANT SELECT,INSERT ON instagram TO writer;
-GRANT UPDATE (mau, mau_lower, mau_upper, all_fields) ON instagram TO writer;
+GRANT UPDATE (mau, mau_lower, mau_upper, all_fields, updated_on) ON instagram TO writer;
 "
 
 # create instagram partitions by country
@@ -197,6 +200,7 @@ CREATE TABLE instagram_invalid (
 	collection_id INT REFERENCES collections(id) ON DELETE SET NULL,
 	contributor_id INT REFERENCES contributors(id) ON DELETE SET NULL,
   contributed_on TIMESTAMPTZ(0) NOT NULL DEFAULT CURRENT_TIMESTAMP(0),
+  updated_on TIMESTAMPTZ(0),
   collection_date DATE NOT NULL,
   country CHAR(2) NOT NULL,
   gender SMALLINT NOT NULL,
@@ -220,7 +224,7 @@ create unique index unique_ig_invalid_idx
 
 GRANT SELECT ON instagram_invalid TO reader;
 GRANT SELECT,INSERT ON instagram_invalid TO writer;
-GRANT UPDATE (mau, mau_lower, mau_upper, all_fields) ON instagram_invalid TO writer;
+GRANT UPDATE (mau, mau_lower, mau_upper, all_fields, updated_on) ON instagram_invalid TO writer;
 "
 
 

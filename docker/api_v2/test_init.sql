@@ -16,6 +16,7 @@ GRANT SELECT ON tokens TO writer;
 CREATE TABLE facebook (
     collection_id integer,
     contributor_id integer,
+    updated_on timestamptz,
     collection_date date NOT NULL,
     country char(2) NOT NULL,
     gender smallint NOT NULL,
@@ -54,7 +55,7 @@ CREATE UNIQUE INDEX instagram_invalid_test_unique ON instagram_invalid (
 );
 
 GRANT SELECT, INSERT ON facebook, facebook_invalid, instagram, instagram_invalid TO writer;
-GRANT UPDATE (mau, mau_lower, mau_upper, all_fields) ON facebook TO writer;
-GRANT UPDATE (mau, mau_lower, mau_upper, all_fields) ON facebook_invalid TO writer;
-GRANT UPDATE (mau, mau_lower, mau_upper, all_fields) ON instagram TO writer;
-GRANT UPDATE (mau, mau_lower, mau_upper, all_fields) ON instagram_invalid TO writer;
+GRANT UPDATE (mau, mau_lower, mau_upper, all_fields, updated_on) ON facebook TO writer;
+GRANT UPDATE (mau, mau_lower, mau_upper, all_fields, updated_on) ON facebook_invalid TO writer;
+GRANT UPDATE (mau, mau_lower, mau_upper, all_fields, updated_on) ON instagram TO writer;
+GRANT UPDATE (mau, mau_lower, mau_upper, all_fields, updated_on) ON instagram_invalid TO writer;

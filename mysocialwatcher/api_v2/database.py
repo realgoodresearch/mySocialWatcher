@@ -10,6 +10,7 @@ from sqlalchemy import (
     Boolean,
     Column,
     Date,
+    DateTime,
     Integer,
     MetaData,
     SmallInteger,
@@ -59,6 +60,7 @@ def audience_table(name: str) -> Table:
         metadata,
         Column("collection_id", Integer),
         Column("contributor_id", Integer),
+        Column("updated_on", DateTime(timezone=True)),
         Column("collection_date", Date, nullable=False),
         Column("country", String(2), nullable=False),
         Column("gender", SmallInteger, nullable=False),
@@ -200,6 +202,7 @@ class BatchWriter:
                                 "mau_lower": statement.excluded.mau_lower,
                                 "mau_upper": statement.excluded.mau_upper,
                                 "all_fields": statement.excluded.all_fields,
+                                "updated_on": func.current_timestamp(),
                             },
                             where=(
                                 statement.excluded.all_fields.contains(refinement_marker)

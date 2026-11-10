@@ -81,6 +81,31 @@ class DatabaseIntegrationTests(unittest.TestCase):
         self.assertEqual((stored["mau"], stored["mau_lower"], stored["mau_upper"]),
                          (210, -1, 230))
         self.assertTrue(stored["all_fields"]["better_estimates"])
+        self.assertIsNotNone(stored["updated_on"])
+
+    def test_invalid_refinement_sets_updated_on_only_when_promoted(self):
+        original = row(0, dau=100, mau=200, valid=False,
+                       all_fields={"query": "original"})
+        refined = row(1, dau=100, mau=210, valid=False,
+                      all_fields={"better_estimates": True})
+
+        self.assertEqual(self.writer.write("v2-test-token", "test", [original]),
+                         {0: "inserted"})
+        with self.engine.connect() as connection:
+            inserted = connection.execute(
+                select(AUDIENCE_TABLES["facebook_invalid"])
+            ).mappings().one()
+        self.assertIsNone(inserted["updated_on"])
+
+        self.assertEqual(self.writer.write("v2-test-token", "test", [refined]),
+                         {1: "promoted"})
+        with self.engine.connect() as connection:
+            promoted = connection.execute(
+                select(AUDIENCE_TABLES["facebook_invalid"])
+            ).mappings().one()
+        self.assertEqual(promoted["mau"], 210)
+        self.assertTrue(promoted["all_fields"]["better_estimates"])
+        self.assertIsNotNone(promoted["updated_on"])
 
     def test_original_does_not_replace_refinement(self):
         refined = row(0, dau=100, mau=210, mau_lower=-1, mau_upper=230,
