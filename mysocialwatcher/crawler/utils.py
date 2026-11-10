@@ -5,6 +5,7 @@ import math
 import numpy
 import datetime
 import warnings
+from pathlib import Path
 from time import sleep
 import pandas as pd
 from ast import literal_eval
@@ -225,6 +226,7 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         temp_path = out_path.replace('log.csv.gz', 'temp.txt')
         error_path = out_path.replace('log.csv.gz', 'error.txt')
+        checkpoint_path = out_path.replace('_log.csv.gz', '_partial_log.csv.gz')
 
         if not os.path.exists(out_path) and not os.path.exists(temp_path) and not os.path.exists(error_path):
             # Atomically claim the file: only one replica may create the marker.
@@ -257,7 +259,8 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
                         collection=collection_name,
                         url=url,
                         token=token,
-                        batch_size=batch_size)
+                        batch_size=batch_size,
+                        checkpoint_path=Path(checkpoint_path))
                 else:
                     response = psw_to_sql(
                         df=df,
@@ -268,6 +271,8 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
 
                 # save API responses
                 response.to_csv(out_path)
+                if os.path.exists(checkpoint_path):
+                    os.remove(checkpoint_path)
                 
                 with open(temp_path, "a") as f:
                     f.write('[' + str(datetime.datetime.now()) + '] Completed' + '\n')
