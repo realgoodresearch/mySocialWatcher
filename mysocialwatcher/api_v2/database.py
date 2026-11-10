@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import json
-from collections import defaultdict, deque
+from collections import defaultdict
 from collections.abc import Sequence
 
 from sqlalchemy import (
@@ -20,7 +20,6 @@ from sqlalchemy import (
     create_engine,
     false,
     func,
-    literal_column,
     select,
 )
 from sqlalchemy.dialects.postgresql import JSONB, insert
@@ -161,22 +160,41 @@ class BatchWriter:
                         current = selected.get(identity)
                         if current is None or (_is_refined(values) and not _is_refined(current[1])):
                             selected[identity] = (row, values)
-                    pending: dict[tuple, deque[int]] = defaultdict(deque)
-                    for row, values in selected.values():
-                        pending[_row_identity(values)].append(row.source_index)
+                    source_by_identity = {
+                        identity: row.source_index
+                        for identity, (row, _) in selected.items()
+                    }
+                    index_elements = [
+                        table.c.country, table.c.collection_date, table.c.gender,
+                        table.c.age_min, table.c.age_max, table.c.dau,
+                        func.md5(cast(table.c.geo_locations, Text)),
+                        func.md5(cast(table.c.targeting, Text)),
+                        func.md5(cast(table.c.response, Text)),
+                    ]
                     statement = insert(table).values(
                         [values for _, values in selected.values()]
                     )
+                    inserted = connection.execute(
+                        statement.on_conflict_do_nothing(index_elements=index_elements)
+                        .returning(*(table.c[name] for name in identity_columns))
+                    )
+                    inserted_identities = set()
+                    for written in inserted.mappings():
+                        identity = _row_identity(written)
+                        inserted_identities.add(identity)
+                        actions[source_by_identity[identity]] = "inserted"
+
+                    promotion_values = [
+                        values for identity, (_, values) in selected.items()
+                        if identity not in inserted_identities and _is_refined(values)
+                    ]
+                    if not promotion_values:
+                        continue
+                    statement = insert(table).values(promotion_values)
                     refinement_marker = {"better_estimates": True}
-                    result = connection.execute(
+                    promoted = connection.execute(
                         statement.on_conflict_do_update(
-                            index_elements=[
-                                table.c.country, table.c.collection_date, table.c.gender,
-                                table.c.age_min, table.c.age_max, table.c.dau,
-                                func.md5(cast(table.c.geo_locations, Text)),
-                                func.md5(cast(table.c.targeting, Text)),
-                                func.md5(cast(table.c.response, Text)),
-                            ],
+                            index_elements=index_elements,
                             set_={
                                 "mau": statement.excluded.mau,
                                 "mau_lower": statement.excluded.mau_lower,
@@ -190,16 +208,10 @@ class BatchWriter:
                                 )
                             ),
                         )
-                        .returning(
-                            *(table.c[name] for name in identity_columns),
-                            literal_column("xmax = 0").label("was_inserted"),
-                        )
+                        .returning(*(table.c[name] for name in identity_columns))
                     )
-                    for written in result.mappings():
-                        source_index = pending[_row_identity(written)].popleft()
-                        actions[source_index] = (
-                            "inserted" if written["was_inserted"] else "promoted"
-                        )
+                    for written in promoted.mappings():
+                        actions[source_by_identity[_row_identity(written)]] = "promoted"
                 return actions
         except AuthenticationError:
             raise

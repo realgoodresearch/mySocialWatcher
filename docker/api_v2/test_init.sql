@@ -30,11 +30,12 @@ CREATE TABLE facebook (
     all_fields jsonb DEFAULT '{}'::jsonb,
     targeting jsonb DEFAULT '{}'::jsonb,
     response jsonb DEFAULT '{}'::jsonb
-);
+) PARTITION BY LIST (country);
 CREATE UNIQUE INDEX facebook_test_unique ON facebook (
     country, collection_date, gender, age_min, age_max, dau,
     md5(geo_locations::text), md5(targeting::text), md5(response::text)
 );
+CREATE TABLE facebook_GB PARTITION OF facebook FOR VALUES IN ('GB');
 
 CREATE TABLE facebook_invalid (LIKE facebook INCLUDING DEFAULTS);
 CREATE UNIQUE INDEX facebook_invalid_test_unique ON facebook_invalid (
