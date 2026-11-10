@@ -98,6 +98,7 @@ CREATE INDEX age_fb_idx ON facebook(age_min, age_max);
 
 GRANT SELECT ON facebook TO reader;
 GRANT SELECT,INSERT ON facebook TO writer;
+GRANT UPDATE (mau, mau_lower, mau_upper, all_fields) ON facebook TO writer;
 "
 
 # create facebook partitions by country
@@ -139,6 +140,7 @@ create unique index unique_fb_invalid_idx
 
 GRANT SELECT ON facebook_invalid TO reader;
 GRANT SELECT,INSERT ON facebook_invalid TO writer;
+GRANT UPDATE (mau, mau_lower, mau_upper, all_fields) ON facebook_invalid TO writer;
 "
 
 # instagram
@@ -177,6 +179,7 @@ CREATE INDEX age_ig_idx ON instagram(age_min, age_max);
 
 GRANT SELECT ON instagram TO reader;
 GRANT SELECT,INSERT ON instagram TO writer;
+GRANT UPDATE (mau, mau_lower, mau_upper, all_fields) ON instagram TO writer;
 "
 
 # create instagram partitions by country
@@ -217,6 +220,7 @@ create unique index unique_ig_invalid_idx
 
 GRANT SELECT ON instagram_invalid TO reader;
 GRANT SELECT,INSERT ON instagram_invalid TO writer;
+GRANT UPDATE (mau, mau_lower, mau_upper, all_fields) ON instagram_invalid TO writer;
 "
 
 

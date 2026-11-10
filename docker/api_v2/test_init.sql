@@ -2,12 +2,16 @@ CREATE TABLE collections (
     id serial PRIMARY KEY,
     name varchar(50) NOT NULL UNIQUE
 );
+CREATE ROLE writer LOGIN PASSWORD 'v2_test_writer';
+GRANT SELECT, INSERT ON collections TO writer;
+GRANT USAGE, SELECT ON SEQUENCE collections_id_seq TO writer;
 CREATE TABLE tokens (
     contributor_id integer NOT NULL,
     token varchar(50) NOT NULL UNIQUE,
     write boolean NOT NULL DEFAULT false
 );
 INSERT INTO tokens (contributor_id, token, write) VALUES (1, 'v2-test-token', true);
+GRANT SELECT ON tokens TO writer;
 
 CREATE TABLE facebook (
     collection_id integer,
@@ -47,3 +51,9 @@ CREATE UNIQUE INDEX instagram_invalid_test_unique ON instagram_invalid (
     country, collection_date, gender, age_min, age_max, dau,
     md5(geo_locations::text), md5(targeting::text), md5(response::text)
 );
+
+GRANT SELECT, INSERT ON facebook, facebook_invalid, instagram, instagram_invalid TO writer;
+GRANT UPDATE (mau, mau_lower, mau_upper, all_fields) ON facebook TO writer;
+GRANT UPDATE (mau, mau_lower, mau_upper, all_fields) ON facebook_invalid TO writer;
+GRANT UPDATE (mau, mau_lower, mau_upper, all_fields) ON instagram TO writer;
+GRANT UPDATE (mau, mau_lower, mau_upper, all_fields) ON instagram_invalid TO writer;
