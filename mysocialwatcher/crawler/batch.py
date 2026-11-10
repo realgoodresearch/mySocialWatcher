@@ -92,8 +92,8 @@ def submit_dataframe_v2(
     session: requests.Session | None = None,
 ) -> pd.DataFrame:
     rows, errors = dataframe_to_v2_rows(dataframe)
-    results: dict[int, tuple[int, str]] = {
-        index: (400, message) for index, message in errors.items()
+    results: dict[int, tuple[int, str, str]] = {
+        index: (400, "rejected", message) for index, message in errors.items()
     }
     client = session or requests.Session()
     for batch in chunks(rows, batch_size):
@@ -110,14 +110,18 @@ def submit_dataframe_v2(
             index = row["source_index"]
             if index in rejected:
                 item = rejected[index]
-                results[index] = (item["status"], item["message"])
+                results[index] = (item["status"], item.get("action", "rejected"),
+                                  item["message"])
             else:
                 item = row_results[index]
-                results[index] = (item["status"], item["message"])
+                fallback = "inserted" if item["status"] == 200 else "unchanged"
+                results[index] = (item["status"], item.get("action", fallback),
+                                  item["message"])
 
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     return pd.DataFrame({
         "timestamp_api": [now] * len(dataframe),
         "status_api": [results[index][0] for index in range(len(dataframe))],
-        "message_api": [results[index][1] for index in range(len(dataframe))],
+        "action_api": [results[index][1] for index in range(len(dataframe))],
+        "message_api": [results[index][2] for index in range(len(dataframe))],
     })

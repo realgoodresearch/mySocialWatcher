@@ -53,9 +53,9 @@ def estimate_ready(row: dict) -> bool:
     return bool(items) and all(bool(item["data"][0]["estimate_ready"]) for item in items)
 
 
-def statuses(path: Path) -> dict[int, int]:
+def outcomes(path: Path) -> dict[int, tuple[int, str]]:
     with gzip.open(path, "rt", encoding="utf-8", newline="") as stream:
-        return {position: int(float(row["status_api"]))
+        return {position: (int(float(row["status_api"])), row["action_api"])
                 for position, row in enumerate(csv.DictReader(stream))}
 
 
@@ -78,7 +78,7 @@ def main() -> int:
         refined_rows, refined_errors = dataframe_to_v2_rows(pd.read_csv(refinement_path))
         original_by_index = {row["source_index"]: row for row in original_rows}
         refined_by_index = {row["source_index"]: row for row in refined_rows}
-        actual = statuses(log_path)
+        actual = outcomes(log_path)
         counts["client_errors"] += len(original_errors) + len(refined_errors)
         for index, refined in refined_by_index.items():
             original = original_by_index.get(index)
@@ -87,13 +87,14 @@ def main() -> int:
             if all(refined.get(field) is None
                    for field in ("mau", "mau_lower", "mau_upper")):
                 counts["expected_endpoint_rejection"] += 1
-                status = actual.get(index)
+                status, action = actual.get(index, (None, None))
                 counts[f"expected_endpoint_rejection_status_{status}"] += 1
-                if status != 400:
+                counts[f"expected_endpoint_rejection_action_{action}"] += 1
+                if (status, action) != (400, "rejected"):
                     mismatches.append({
                         "file": record["refinement"], "row_index": index,
                         "category": "expected_endpoint_rejection",
-                        "expected": 400, "actual": status,
+                        "expected": [400, "rejected"], "actual": [status, action],
                     })
                 continue
             source_marked = refined.get("all_fields", {}).get("better_estimates") is True
@@ -103,18 +104,21 @@ def main() -> int:
             marked = True
             same_identity = identity(original) == identity(refined)
             if same_identity and marked:
-                expected, category = 200, "expected_promotion"
+                expected, expected_action, category = 200, "promoted", "expected_promotion"
             elif same_identity:
-                expected, category = 409, "expected_unmarked_conflict"
+                expected, expected_action, category = 409, "unchanged", "expected_unmarked_conflict"
             else:
-                expected, category = 200, "expected_distinct_insert"
+                expected, expected_action, category = 200, "inserted", "expected_distinct_insert"
             counts[category] += 1
-            status = actual.get(index)
+            status, action = actual.get(index, (None, None))
             counts[f"{category}_status_{status}"] += 1
-            if status != expected:
+            counts[f"{category}_action_{action}"] += 1
+            if (status, action) != (expected, expected_action):
                 mismatches.append({
                     "file": record["refinement"], "row_index": index,
-                    "category": category, "expected": expected, "actual": status,
+                    "category": category,
+                    "expected": [expected, expected_action],
+                    "actual": [status, action],
                 })
 
     print(json.dumps({"counts": counts, "mismatches": mismatches[:20]}, indent=2))

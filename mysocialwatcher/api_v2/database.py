@@ -20,6 +20,7 @@ from sqlalchemy import (
     create_engine,
     false,
     func,
+    literal_column,
     select,
 )
 from sqlalchemy.dialects.postgresql import JSONB, insert
@@ -113,7 +114,8 @@ class BatchWriter:
     def __init__(self, engine: Engine):
         self.engine = engine
 
-    def write(self, token: str, collection: str, rows: Sequence[NormalizedRow]) -> set[int]:
+    def write(self, token: str, collection: str,
+              rows: Sequence[NormalizedRow]) -> dict[int, str]:
         try:
             with self.engine.begin() as connection:
                 contributor_id = connection.execute(
@@ -146,7 +148,7 @@ class BatchWriter:
                     values.update(collection_id=collection_id, contributor_id=contributor_id)
                     grouped[row.table].append((row, values))
 
-                inserted_indices: set[int] = set()
+                actions: dict[int, str] = {}
                 identity_columns = (
                     "country", "collection_date", "gender", "age_min", "age_max", "dau",
                     "geo_locations", "targeting", "response",
@@ -188,11 +190,17 @@ class BatchWriter:
                                 )
                             ),
                         )
-                        .returning(*(table.c[name] for name in identity_columns))
+                        .returning(
+                            *(table.c[name] for name in identity_columns),
+                            literal_column("xmax = 0").label("was_inserted"),
+                        )
                     )
-                    for inserted in result.mappings():
-                        inserted_indices.add(pending[_row_identity(inserted)].popleft())
-                return inserted_indices
+                    for written in result.mappings():
+                        source_index = pending[_row_identity(written)].popleft()
+                        actions[source_index] = (
+                            "inserted" if written["was_inserted"] else "promoted"
+                        )
+                return actions
         except AuthenticationError:
             raise
         except (OperationalError, SQLAlchemyError) as exc:

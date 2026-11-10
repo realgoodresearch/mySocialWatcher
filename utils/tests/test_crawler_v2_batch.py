@@ -31,7 +31,8 @@ class FakeResponse:
 
     def json(self):
         return {
-            "results": [{"source_index": 0, "status": 200, "message": "OK: row inserted."}],
+            "results": [{"source_index": 0, "status": 200, "action": "inserted",
+                         "message": "OK: row inserted."}],
             "errors": [],
         }
 
@@ -66,7 +67,9 @@ class BatchClientTests(unittest.TestCase):
         session = FakeSession()
         result = submit_dataframe_v2(frame(), "test", "token", "http://v2", session=session)
         self.assertEqual(result.loc[0, "status_api"], 200)
-        self.assertEqual(list(result.columns), ["timestamp_api", "status_api", "message_api"])
+        self.assertEqual(list(result.columns),
+                         ["timestamp_api", "status_api", "action_api", "message_api"])
+        self.assertEqual(result.loc[0, "action_api"], "inserted")
         self.assertEqual(session.requests[0][1]["json"]["rows"][0]["source_index"], 0)
 
     def test_duplicate_result_is_written_as_409(self):
@@ -74,7 +77,8 @@ class BatchClientTests(unittest.TestCase):
             def json(self):
                 return {
                     "results": [{"source_index": 0, "status": 409,
-                                 "message": "Conflict: row already exists."}],
+                                 "action": "unchanged",
+                                 "message": "Conflict: existing row retained."}],
                     "errors": [],
                 }
 
@@ -86,7 +90,28 @@ class BatchClientTests(unittest.TestCase):
         result = submit_dataframe_v2(frame(), "test", "token", "http://v2",
                                      session=DuplicateSession())
         self.assertEqual(result.loc[0, "status_api"], 409)
-        self.assertEqual(result.loc[0, "message_api"], "Conflict: row already exists.")
+        self.assertEqual(result.loc[0, "action_api"], "unchanged")
+        self.assertEqual(result.loc[0, "message_api"], "Conflict: existing row retained.")
+
+    def test_promotion_is_written_to_log(self):
+        class PromotionResponse(FakeResponse):
+            def json(self):
+                return {
+                    "results": [{"source_index": 0, "status": 200,
+                                 "action": "promoted",
+                                 "message": "OK: existing row promoted with refined estimates."}],
+                    "errors": [],
+                }
+
+        class PromotionSession(FakeSession):
+            def post(self, url, **kwargs):
+                self.requests.append((url, kwargs))
+                return PromotionResponse()
+
+        result = submit_dataframe_v2(frame(), "test", "token", "http://v2",
+                                     session=PromotionSession())
+        self.assertEqual(result.loc[0, "status_api"], 200)
+        self.assertEqual(result.loc[0, "action_api"], "promoted")
 
 
 if __name__ == "__main__":

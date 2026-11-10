@@ -52,8 +52,9 @@ class DatabaseIntegrationTests(unittest.TestCase):
 
     def test_bulk_insert_and_duplicate_accounting(self):
         rows = [row(0), row(1)]
-        self.assertEqual(self.writer.write("v2-test-token", "_King's study_", rows), {0, 1})
-        self.assertEqual(self.writer.write("v2-test-token", "_King's study_", rows), set())
+        self.assertEqual(self.writer.write("v2-test-token", "_King's study_", rows),
+                         {0: "inserted", 1: "inserted"})
+        self.assertEqual(self.writer.write("v2-test-token", "_King's study_", rows), {})
         with self.engine.connect() as connection:
             count = connection.scalar(select(func.count()).select_from(AUDIENCE_TABLES["facebook"]))
             name = connection.scalar(select(collections.c.name))
@@ -62,7 +63,7 @@ class DatabaseIntegrationTests(unittest.TestCase):
 
     def test_duplicate_rows_within_one_batch_identify_only_one_insert(self):
         rows = [row(10), row(11, dau=110)]
-        self.assertEqual(self.writer.write("v2-test-token", "test", rows), {10})
+        self.assertEqual(self.writer.write("v2-test-token", "test", rows), {10: "inserted"})
 
     def test_refinement_replaces_original_measurements(self):
         original = row(0, dau=100, mau=200, mau_lower=180, mau_upper=220,
@@ -70,8 +71,10 @@ class DatabaseIntegrationTests(unittest.TestCase):
         refined = row(1, dau=100, mau=210, mau_lower=-1, mau_upper=230,
                       all_fields={"query": "refined", "better_estimates": True})
 
-        self.assertEqual(self.writer.write("v2-test-token", "test", [original]), {0})
-        self.assertEqual(self.writer.write("v2-test-token", "test", [refined]), {1})
+        self.assertEqual(self.writer.write("v2-test-token", "test", [original]),
+                         {0: "inserted"})
+        self.assertEqual(self.writer.write("v2-test-token", "test", [refined]),
+                         {1: "promoted"})
 
         with self.engine.connect() as connection:
             stored = connection.execute(select(AUDIENCE_TABLES["facebook"])).mappings().one()
@@ -85,8 +88,9 @@ class DatabaseIntegrationTests(unittest.TestCase):
         original = row(1, dau=100, mau=200, mau_lower=180, mau_upper=220,
                        all_fields={"query": "original"})
 
-        self.assertEqual(self.writer.write("v2-test-token", "test", [refined]), {0})
-        self.assertEqual(self.writer.write("v2-test-token", "test", [original]), set())
+        self.assertEqual(self.writer.write("v2-test-token", "test", [refined]),
+                         {0: "inserted"})
+        self.assertEqual(self.writer.write("v2-test-token", "test", [original]), {})
 
         with self.engine.connect() as connection:
             stored = connection.execute(select(AUDIENCE_TABLES["facebook"])).mappings().one()
@@ -99,10 +103,12 @@ class DatabaseIntegrationTests(unittest.TestCase):
         refined = row(2, dau=101, mau=400, all_fields={"better_estimates": True})
         later_refined = row(3, dau=101, mau=500, all_fields={"better_estimates": True})
 
-        self.assertEqual(self.writer.write("v2-test-token", "test", [original]), {0})
-        self.assertEqual(self.writer.write("v2-test-token", "test", [later_original]), set())
-        self.assertEqual(self.writer.write("v2-test-token", "test", [refined]), {2})
-        self.assertEqual(self.writer.write("v2-test-token", "test", [later_refined]), set())
+        self.assertEqual(self.writer.write("v2-test-token", "test", [original]),
+                         {0: "inserted"})
+        self.assertEqual(self.writer.write("v2-test-token", "test", [later_original]), {})
+        self.assertEqual(self.writer.write("v2-test-token", "test", [refined]),
+                         {2: "inserted"})
+        self.assertEqual(self.writer.write("v2-test-token", "test", [later_refined]), {})
 
         with self.engine.connect() as connection:
             stored = connection.execute(
@@ -116,7 +122,8 @@ class DatabaseIntegrationTests(unittest.TestCase):
         refined = row(11, dau=100, mau=210,
                       all_fields={"better_estimates": True})
 
-        self.assertEqual(self.writer.write("v2-test-token", "test", [original, refined]), {11})
+        self.assertEqual(self.writer.write("v2-test-token", "test", [original, refined]),
+                         {11: "inserted"})
         with self.engine.connect() as connection:
             stored = connection.execute(select(AUDIENCE_TABLES["facebook"])).mappings().one()
         self.assertEqual(stored["mau"], 210)
@@ -140,7 +147,7 @@ class DatabaseIntegrationTests(unittest.TestCase):
         refinement = normalize_row(fixture["incoming_refinement"])
         self.assertEqual(
             self.writer.write("v2-test-token", stored["collection"], [refinement]),
-            {refinement.source_index},
+            {refinement.source_index: "promoted"},
         )
 
         with self.engine.connect() as connection:
