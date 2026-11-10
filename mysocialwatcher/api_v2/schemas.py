@@ -14,12 +14,14 @@ class BatchWriteRequest(BaseModel):
 class RowError(BaseModel):
     source_index: int
     status: Literal[400]
+    action: Literal["rejected"] = "rejected"
     message: str
 
 
 class RowResult(BaseModel):
     source_index: int
     status: Literal[200, 409]
+    action: Literal["inserted", "promoted", "unchanged"]
     message: str
 
 
@@ -29,6 +31,7 @@ class BatchWriteResponse(BaseModel):
     accepted: int
     rejected: int
     inserted: int
+    promoted: int
     duplicates: int
     results: list[RowResult]
     errors: list[RowError]

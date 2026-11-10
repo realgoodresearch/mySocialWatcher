@@ -27,7 +27,7 @@ def payload():
 
 class Writer:
     def write(self, token, collection, rows):
-        return {row.source_index for row in rows}
+        return {row.source_index: "inserted" for row in rows}
 
 
 class RouteTests(unittest.TestCase):
@@ -44,6 +44,8 @@ class RouteTests(unittest.TestCase):
         response = TestClient(app).post("/socialwatcher/v2/write-batch", json=payload())
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["inserted"], 1)
+        self.assertEqual(response.json()["promoted"], 0)
+        self.assertEqual(response.json()["results"][0]["action"], "inserted")
 
     def test_unauthorized_is_401(self):
         class Unauthorized:

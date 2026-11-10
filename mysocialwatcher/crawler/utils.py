@@ -5,11 +5,12 @@ import math
 import numpy
 import datetime
 import warnings
+from pathlib import Path
 from time import sleep
 import pandas as pd
 from ast import literal_eval
 
-from mysocialwatcher.crawler.batch import submit_dataframe_v2
+from mysocialwatcher.crawler.batch import mark_better_estimates, submit_dataframe_v2
 
 
 def safe_http_error_message(exc, response=None):
@@ -225,6 +226,7 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         temp_path = out_path.replace('log.csv.gz', 'temp.txt')
         error_path = out_path.replace('log.csv.gz', 'error.txt')
+        checkpoint_path = out_path.replace('_log.csv.gz', '_partial_log.csv.gz')
 
         if not os.path.exists(out_path) and not os.path.exists(temp_path) and not os.path.exists(error_path):
             # Atomically claim the file: only one replica may create the marker.
@@ -245,6 +247,9 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
                 # load data
                 df = pd.read_csv(file)
 
+                if "_betterestimate.csv" in os.path.basename(file):
+                    df = mark_better_estimates(df)
+
                 collection_name = file.split('/')[-3].lstrip('_')
 
                 # write collection to SQL via API
@@ -254,7 +259,8 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
                         collection=collection_name,
                         url=url,
                         token=token,
-                        batch_size=batch_size)
+                        batch_size=batch_size,
+                        checkpoint_path=Path(checkpoint_path))
                 else:
                     response = psw_to_sql(
                         df=df,
@@ -265,6 +271,8 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
 
                 # save API responses
                 response.to_csv(out_path)
+                if os.path.exists(checkpoint_path):
+                    os.remove(checkpoint_path)
                 
                 with open(temp_path, "a") as f:
                     f.write('[' + str(datetime.datetime.now()) + '] Completed' + '\n')

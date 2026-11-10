@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import json
+from pathlib import Path
 from ast import literal_eval
 from collections.abc import Iterator
 
@@ -20,6 +21,20 @@ def parse_response(value):
     if value.startswith("["):
         return literal_eval(value)
     raise ValueError("unrecognized response representation")
+
+
+def mark_better_estimates(dataframe: pd.DataFrame) -> pd.DataFrame:
+    """Return a copy with explicit provenance for legacy refinement files."""
+    marked = dataframe.copy()
+
+    def add_marker(value):
+        parsed = literal_eval(value) if isinstance(value, str) else value
+        fields = dict(parsed)
+        fields["better_estimates"] = True
+        return repr(tuple(fields.items()))
+
+    marked["all_fields"] = marked["all_fields"].apply(add_marker)
+    return marked
 
 
 def dataframe_to_v2_rows(dataframe: pd.DataFrame) -> tuple[list[dict], dict[int, str]]:
@@ -76,13 +91,34 @@ def submit_dataframe_v2(
     url: str,
     batch_size: int = 500,
     session: requests.Session | None = None,
+    checkpoint_path: Path | None = None,
 ) -> pd.DataFrame:
     rows, errors = dataframe_to_v2_rows(dataframe)
-    results: dict[int, tuple[int, str]] = {
-        index: (400, message) for index, message in errors.items()
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    results: dict[int, tuple[str, int, str, str]] = {
+        index: (now, 400, "rejected", message) for index, message in errors.items()
     }
+    if checkpoint_path is not None and checkpoint_path.exists():
+        prior = pd.read_csv(checkpoint_path, index_col=0)
+        for index, item in prior.iterrows():
+            results[int(index)] = (
+                str(item["timestamp_api"]), int(item["status_api"]),
+                str(item["action_api"]), str(item["message_api"]),
+            )
+
+    def checkpoint() -> None:
+        if checkpoint_path is None:
+            return
+        checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+        partial = result_frame(results)
+        temporary = checkpoint_path.with_name(checkpoint_path.name + ".tmp")
+        partial.to_csv(temporary, compression="gzip")
+        temporary.replace(checkpoint_path)
+
+    checkpoint()
     client = session or requests.Session()
-    for batch in chunks(rows, batch_size):
+    pending = [row for row in rows if row["source_index"] not in results]
+    for batch in chunks(pending, batch_size):
         response = client.post(
             url,
             json={"token": token, "collection": collection, "rows": batch},
@@ -92,18 +128,27 @@ def submit_dataframe_v2(
         body = response.json()
         row_results = {item["source_index"]: item for item in body["results"]}
         rejected = {item["source_index"]: item for item in body["errors"]}
+        timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
         for row in batch:
             index = row["source_index"]
             if index in rejected:
                 item = rejected[index]
-                results[index] = (item["status"], item["message"])
+                results[index] = (timestamp, item["status"],
+                                  item.get("action", "rejected"), item["message"])
             else:
                 item = row_results[index]
-                results[index] = (item["status"], item["message"])
+                fallback = "inserted" if item["status"] == 200 else "unchanged"
+                results[index] = (timestamp, item["status"],
+                                  item.get("action", fallback), item["message"])
+        checkpoint()
 
-    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    return result_frame(results).reindex(range(len(dataframe)))
+
+
+def result_frame(results: dict[int, tuple[str, int, str, str]]) -> pd.DataFrame:
     return pd.DataFrame({
-        "timestamp_api": [now] * len(dataframe),
-        "status_api": [results[index][0] for index in range(len(dataframe))],
-        "message_api": [results[index][1] for index in range(len(dataframe))],
-    })
+        "timestamp_api": {index: value[0] for index, value in results.items()},
+        "status_api": {index: value[1] for index, value in results.items()},
+        "action_api": {index: value[2] for index, value in results.items()},
+        "message_api": {index: value[3] for index, value in results.items()},
+    }).sort_index()
