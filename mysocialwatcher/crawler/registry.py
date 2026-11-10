@@ -1,8 +1,4 @@
-"""Best-effort API v2 file-registry observation helpers.
-
-Observation is deliberately diagnostic: callers catch RegistryError and continue
-the existing crawl, including its CSV-log skip and completion behavior.
-"""
+"""API v2 file-registry helpers for observation and enforced claims."""
 from __future__ import annotations
 
 import gzip
@@ -50,7 +46,8 @@ class RegistryObserver:
         self.crawler_instance = crawler_instance
         self.session = session or requests.Session()
 
-    def observe(self, data_dir: Path, source: Path, collection: str) -> dict:
+    def _start(self, mode: str, data_dir: Path, source: Path, collection: str,
+               lease_seconds: int | None = None) -> dict:
         content_hash, uncompressed_size = decompressed_sha256(source)
         payload = {
             "token": self.token,
@@ -63,15 +60,46 @@ class RegistryObserver:
             "crawler_instance": self.crawler_instance,
             "request_id": str(uuid4()),
         }
+        if lease_seconds is not None:
+            payload["lease_seconds"] = lease_seconds
         try:
-            response = self.session.post(f"{self.url}/files/observe", json=payload, timeout=(10, 30))
+            response = self.session.post(f"{self.url}/files/{mode}", json=payload, timeout=(10, 30))
             response.raise_for_status()
             body = response.json()
         except (ValueError, requests.RequestException) as exc:
-            raise RegistryError(f"registry observation start failed: {type(exc).__name__}") from exc
-        if body.get("decision") != "observe" or not body.get("attempt_id") or not body.get("attempt_token"):
-            raise RegistryError("registry observation returned an invalid attempt handle")
+            raise RegistryError(f"registry {mode} start failed: {type(exc).__name__}") from exc
+        valid_decisions = ({"observe"} if mode == "observe"
+                           else {"process", "retry", "in_progress", "already_completed"})
+        if body.get("decision") not in valid_decisions:
+            raise RegistryError(f"registry {mode} returned an invalid decision")
+        if body["decision"] in {"observe", "process", "retry"} and (
+                not body.get("attempt_id") or not body.get("attempt_token")):
+            raise RegistryError(f"registry {mode} returned an invalid attempt handle")
         return body
+
+    def observe(self, data_dir: Path, source: Path, collection: str) -> dict:
+        return self._start("observe", data_dir, source, collection)
+
+    def claim(self, data_dir: Path, source: Path, collection: str,
+              lease_seconds: int = 900) -> dict:
+        return self._start("claim", data_dir, source, collection, lease_seconds)
+
+    def renew(self, attempt: dict, lease_seconds: int = 900) -> None:
+        payload = {
+            "token": self.token,
+            "attempt_token": attempt["attempt_token"],
+            "lease_seconds": lease_seconds,
+        }
+        try:
+            response = self.session.post(
+                f"{self.url}/file-attempts/{attempt['attempt_id']}/renew",
+                json=payload, timeout=(10, 30))
+            response.raise_for_status()
+            body = response.json()
+        except (ValueError, requests.RequestException) as exc:
+            raise RegistryError(f"registry lease renewal failed: {type(exc).__name__}") from exc
+        if not body.get("lease_expires_at"):
+            raise RegistryError("registry lease renewal returned an invalid response")
 
     def finish(self, attempt: dict, outcome: str, total_rows: int | None,
                status_counts: dict[int, int], action_counts: dict[str, int] | None = None,

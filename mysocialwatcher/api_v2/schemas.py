@@ -76,7 +76,7 @@ class LeaseRenewResponse(BaseModel):
 class AttemptFinishRequest(BaseModel):
     token: str = Field(min_length=1)
     attempt_token: UUID
-    outcome: Literal["completed", "failed", "corrupt", "abandoned"]
+    outcome: Literal["completed", "completed_with_rejections", "failed", "corrupt", "abandoned"]
     total_rows: int | None = Field(default=None, ge=0)
     rows_200: int = Field(default=0, ge=0)
     rows_409: int = Field(default=0, ge=0)

@@ -5,14 +5,45 @@ import math
 import numpy
 import datetime
 import warnings
+import re
 from pathlib import Path
 from time import sleep
-from pathlib import Path
 import pandas as pd
 from ast import literal_eval
 
 from mysocialwatcher.crawler.batch import mark_better_estimates, submit_dataframe_v2
 from mysocialwatcher.crawler.registry import RegistryError, RegistryObserver
+
+
+CRAWL_DATE_PATTERN = re.compile(r"_(\d{8})(?:_betterestimate)?\.csv\.gz$")
+
+
+def crawl_date_from_filename(path):
+    match = CRAWL_DATE_PATTERN.search(os.path.basename(path))
+    if not match:
+        return None
+    try:
+        return datetime.datetime.strptime(match.group(1), "%Y%m%d").date()
+    except ValueError:
+        return None
+
+
+def parse_crawl_date_bound(value, name):
+    if value is None or isinstance(value, datetime.date):
+        return value
+    try:
+        return datetime.date.fromisoformat(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must use YYYY-MM-DD") from exc
+
+
+def normalize_path_prefix(value):
+    if not value:
+        return None
+    path = Path(value)
+    if path.is_absolute() or '..' in path.parts:
+        raise ValueError("CRAWL_PATH_PREFIX must be relative to DATA_DIR")
+    return path.as_posix().strip('/') + '/'
 
 
 def safe_http_error_message(exc, response=None):
@@ -195,7 +226,9 @@ def governor(func, hours=1):
 
 def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
             api_mode='v1', batch_size=500, registry_mode='off', registry_url=None,
-            crawler_instance='crawler'):
+            crawler_instance='crawler', registry_lease_seconds=900,
+            crawl_run_mode='normal', crawl_date_from=None, crawl_date_to=None,
+            crawl_path_prefix=None, recrawl_run_id=None):
     # crawl_dir = 'data/_test'
 
     print('-----------------------------')
@@ -210,12 +243,26 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
         raise ValueError("REGISTRY_MODE must be 'off', 'observe', or 'enforce'")
     if registry_mode != 'off' and api_mode != 'v2':
         raise ValueError("REGISTRY_MODE requires API_MODE=v2")
-    if registry_mode == 'enforce':
-        raise ValueError("REGISTRY_MODE=enforce is blocked pending issue #6 refinement preference work")
-    if registry_mode == 'observe' and not registry_url:
-        raise ValueError("REGISTRY_URL is required when REGISTRY_MODE=observe")
-    observer = (RegistryObserver(registry_url, token, crawler_instance)
-                if registry_mode == 'observe' else None)
+    if registry_mode != 'off' and not registry_url:
+        raise ValueError("REGISTRY_URL is required when REGISTRY_MODE is enabled")
+    if not 1 <= registry_lease_seconds <= 86400:
+        raise ValueError("REGISTRY_LEASE_SECONDS must be between 1 and 86400")
+    if crawl_run_mode not in {'normal', 'historical'}:
+        raise ValueError("CRAWL_RUN_MODE must be 'normal' or 'historical'")
+    date_from = parse_crawl_date_bound(crawl_date_from, 'CRAWL_DATE_FROM')
+    date_to = parse_crawl_date_bound(crawl_date_to, 'CRAWL_DATE_TO')
+    if date_from and date_to and date_from > date_to:
+        raise ValueError("CRAWL_DATE_FROM must not be after CRAWL_DATE_TO")
+    path_prefix = normalize_path_prefix(crawl_path_prefix)
+    if crawl_run_mode == 'historical':
+        if registry_mode != 'enforce':
+            raise ValueError("historical crawling requires REGISTRY_MODE=enforce")
+        if not recrawl_run_id or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}', recrawl_run_id):
+            raise ValueError("RECRAWL_RUN_ID must be a filesystem-safe identifier")
+        if not (date_from or date_to or path_prefix):
+            raise ValueError("historical crawling requires a date bound or path prefix")
+    registry = (RegistryObserver(registry_url, token, crawler_instance)
+                if registry_mode != 'off' else None)
 
     # file list
     file_list = []
@@ -225,6 +272,14 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
         for f in file:
             full_path = os.path.join(root, f)
             if "finished/dataframe_collected_finished_" in full_path:
+                relative = Path(full_path).relative_to(data_dir).as_posix()
+                if path_prefix and not relative.startswith(path_prefix):
+                    continue
+                crawl_date = crawl_date_from_filename(full_path)
+                if date_from and (crawl_date is None or crawl_date < date_from):
+                    continue
+                if date_to and (crawl_date is None or crawl_date > date_to):
+                    continue
                 file_list.append(full_path)
     
     # Sort by modification time, most recent first
@@ -235,7 +290,9 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
         # file = file_list[0]
         # file = 'C:/Users/edithd/Documents/mySocialWatcher/data/saffron/ukraine_admin2_tessellation/finished/dataframe_collected_finished_1_facebook_all_admin2_20240328.csv'
 
-        out_path = file.replace(data_dir, crawl_dir).replace('.csv.gz', '_log.csv.gz')
+        log_root = (os.path.join(crawl_dir, 'recrawl', recrawl_run_id)
+                    if crawl_run_mode == 'historical' else crawl_dir)
+        out_path = file.replace(data_dir, log_root).replace('.csv.gz', '_log.csv.gz')
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         temp_path = out_path.replace('log.csv.gz', 'temp.txt')
         error_path = out_path.replace('log.csv.gz', 'error.txt')
@@ -257,6 +314,22 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
             print('[' + str(datetime.datetime.now()) + '] ' + file)
 
             attempt = None
+            collection_name = file.split('/')[-3].lstrip('_')
+            if registry:
+                try:
+                    attempt = (registry.observe(Path(data_dir), Path(file), collection_name)
+                               if registry_mode == 'observe'
+                               else registry.claim(Path(data_dir), Path(file), collection_name,
+                                                   registry_lease_seconds))
+                except RegistryError as registry_error:
+                    warnings.warn(str(registry_error))
+                    if registry_mode == 'enforce':
+                        os.remove(temp_path)
+                        continue
+                if attempt and attempt['decision'] in {'already_completed', 'in_progress'}:
+                    os.remove(temp_path)
+                    continue
+
             try:
                 # load data
                 df = pd.read_csv(file)
@@ -264,13 +337,8 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
                 if "_betterestimate.csv" in os.path.basename(file):
                     df = mark_better_estimates(df)
 
-                collection_name = file.split('/')[-3].lstrip('_')
-
-                if observer:
-                    try:
-                        attempt = observer.observe(Path(data_dir), Path(file), collection_name)
-                    except RegistryError as registry_error:
-                        warnings.warn(str(registry_error))
+                if registry_mode == 'enforce':
+                    registry.renew(attempt, registry_lease_seconds)
 
                 # write collection to SQL via API
                 if api_mode == 'v2':
@@ -280,7 +348,9 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
                         url=url,
                         token=token,
                         batch_size=batch_size,
-                        checkpoint_path=Path(checkpoint_path))
+                        checkpoint_path=Path(checkpoint_path),
+                        batch_complete=(lambda: registry.renew(attempt, registry_lease_seconds))
+                        if registry_mode == 'enforce' else None)
                 else:
                     response = psw_to_sql(
                         df=df,
@@ -288,9 +358,6 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
                         url=url,
                         token=token,
                         valid=True)
-
-                # save API responses
-                response.to_csv(out_path)
 
                 if attempt:
                     status_counts = response['status_api'].value_counts().astype(int).to_dict()
@@ -303,21 +370,42 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
                                if complete and action_counts.get('rejected', 0)
                                else 'completed' if complete else 'failed')
                     try:
-                        observer.finish(attempt, outcome, len(df), status_counts,
+                        registry.finish(attempt, outcome, len(df), status_counts,
                                         action_counts,
                                         None if complete else 'non-terminal row outcomes')
                     except RegistryError as registry_error:
+                        if registry_mode == 'enforce':
+                            raise
                         warnings.warn(str(registry_error))
+
+                # Publish the durable CSV log only after an enforced attempt is finished.
+                response.to_csv(out_path)
                 if os.path.exists(checkpoint_path):
                     os.remove(checkpoint_path)
                 
                 with open(temp_path, "a") as f:
                     f.write('[' + str(datetime.datetime.now()) + '] Completed' + '\n')
                 
+            except RegistryError as e:
+                warnings.warn(str(e))
+                if attempt:
+                    try:
+                        registry.finish(attempt, 'failed', None, {}, {}, type(e).__name__)
+                    except RegistryError as registry_error:
+                        warnings.warn(str(registry_error))
+                os.remove(temp_path)
+            except requests.RequestException as e:
+                if attempt:
+                    try:
+                        registry.finish(attempt, 'failed', None, {}, {}, type(e).__name__)
+                    except RegistryError as registry_error:
+                        warnings.warn(str(registry_error))
+                warnings.warn(safe_http_error_message(e))
+                os.remove(temp_path)
             except Exception as e:
                 if attempt:
                     try:
-                        observer.finish(attempt, 'failed', None, {}, {}, type(e).__name__)
+                        registry.finish(attempt, 'failed', None, {}, {}, type(e).__name__)
                     except RegistryError as registry_error:
                         warnings.warn(str(registry_error))
                 with open(temp_path, "a") as f:

@@ -29,6 +29,12 @@ class Session:
         self.calls.append((url, json, timeout))
         if url.endswith("/files/observe"):
             return Response({"decision": "observe", "attempt_id": 1, "attempt_token": "token"})
+        if url.endswith("/files/claim"):
+            return Response({"decision": "process", "attempt_id": 2,
+                             "attempt_token": "claim-token",
+                             "lease_expires_at": "2026-11-10T00:15:00+00:00"})
+        if url.endswith("/renew"):
+            return Response({"lease_expires_at": "2026-11-10T00:20:00+00:00"})
         return Response({})
 
 
@@ -69,6 +75,23 @@ class RegistryHashingTests(unittest.TestCase):
                          (1, 1, 3, 1))
         self.assertNotIn("rows", payload)
         self.assertNotIn("source", json.dumps(payload))
+
+    def test_enforced_claim_and_renew_use_the_attempt_handle(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "collector/finished/file.csv.gz"
+            source.parent.mkdir(parents=True)
+            with gzip.open(source, "wb") as stream:
+                stream.write(b"column,value\nexample,1\n")
+            session = Session()
+            registry = RegistryObserver("http://api/socialwatcher/v2", "secret", "crawler-1", session)
+            attempt = registry.claim(root, source, "collector", lease_seconds=120)
+            registry.renew(attempt, lease_seconds=120)
+            self.assertEqual(attempt["decision"], "process")
+            self.assertTrue(session.calls[0][0].endswith("/files/claim"))
+            self.assertEqual(session.calls[0][1]["lease_seconds"], 120)
+            self.assertTrue(session.calls[1][0].endswith("/file-attempts/2/renew"))
+            self.assertEqual(session.calls[1][1]["attempt_token"], "claim-token")
 
 
 if __name__ == "__main__":

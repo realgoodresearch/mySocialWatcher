@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from ast import literal_eval
 from collections.abc import Iterator
+from collections.abc import Callable
 
 import numpy
 import pandas as pd
@@ -92,6 +93,7 @@ def submit_dataframe_v2(
     batch_size: int = 500,
     session: requests.Session | None = None,
     checkpoint_path: Path | None = None,
+    batch_complete: Callable[[], None] | None = None,
 ) -> pd.DataFrame:
     rows, errors = dataframe_to_v2_rows(dataframe)
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -141,6 +143,8 @@ def submit_dataframe_v2(
                 results[index] = (timestamp, item["status"],
                                   item.get("action", fallback), item["message"])
         checkpoint()
+        if batch_complete is not None:
+            batch_complete()
 
     return result_frame(results).reindex(range(len(dataframe)))
 
