@@ -2,16 +2,21 @@ CREATE TABLE collections (
     id serial PRIMARY KEY,
     name varchar(50) NOT NULL UNIQUE
 );
+CREATE ROLE writer LOGIN PASSWORD 'v2_test_writer';
+GRANT SELECT, INSERT ON collections TO writer;
+GRANT USAGE, SELECT ON SEQUENCE collections_id_seq TO writer;
 CREATE TABLE tokens (
     contributor_id integer NOT NULL,
     token varchar(50) NOT NULL UNIQUE,
     write boolean NOT NULL DEFAULT false
 );
 INSERT INTO tokens (contributor_id, token, write) VALUES (1, 'v2-test-token', true);
+GRANT SELECT ON tokens TO writer;
 
 CREATE TABLE facebook (
     collection_id integer,
     contributor_id integer,
+    updated_on timestamptz,
     collection_date date NOT NULL,
     country char(2) NOT NULL,
     gender smallint NOT NULL,
@@ -26,11 +31,12 @@ CREATE TABLE facebook (
     all_fields jsonb DEFAULT '{}'::jsonb,
     targeting jsonb DEFAULT '{}'::jsonb,
     response jsonb DEFAULT '{}'::jsonb
-);
+) PARTITION BY LIST (country);
 CREATE UNIQUE INDEX facebook_test_unique ON facebook (
     country, collection_date, gender, age_min, age_max, dau,
     md5(geo_locations::text), md5(targeting::text), md5(response::text)
 );
+CREATE TABLE facebook_GB PARTITION OF facebook FOR VALUES IN ('GB');
 
 CREATE TABLE facebook_invalid (LIKE facebook INCLUDING DEFAULTS);
 CREATE UNIQUE INDEX facebook_invalid_test_unique ON facebook_invalid (
@@ -47,3 +53,9 @@ CREATE UNIQUE INDEX instagram_invalid_test_unique ON instagram_invalid (
     country, collection_date, gender, age_min, age_max, dau,
     md5(geo_locations::text), md5(targeting::text), md5(response::text)
 );
+
+GRANT SELECT, INSERT ON facebook, facebook_invalid, instagram, instagram_invalid TO writer;
+GRANT UPDATE (mau, mau_lower, mau_upper, all_fields, updated_on) ON facebook TO writer;
+GRANT UPDATE (mau, mau_lower, mau_upper, all_fields, updated_on) ON facebook_invalid TO writer;
+GRANT UPDATE (mau, mau_lower, mau_upper, all_fields, updated_on) ON instagram TO writer;
+GRANT UPDATE (mau, mau_lower, mau_upper, all_fields, updated_on) ON instagram_invalid TO writer;

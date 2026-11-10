@@ -23,24 +23,30 @@ def process_batch(request: BatchWriteRequest, writer: BatchWriter) -> BatchWrite
             errors.append(RowError(source_index=source_index if isinstance(source_index, int) else position,
                                    status=400, message=validation_message(exc)))
 
-    inserted_indices = writer.write(request.token, request.collection, normalized)
+    actions = writer.write(request.token, request.collection, normalized)
     results = [
         RowResult(
             source_index=row.source_index,
-            status=200 if row.source_index in inserted_indices else 409,
-            message=("OK: row inserted." if row.source_index in inserted_indices
-                     else "Conflict: row already exists."),
+            status=200 if row.source_index in actions else 409,
+            action=actions.get(row.source_index, "unchanged"),
+            message={
+                "inserted": "OK: row inserted.",
+                "promoted": "OK: existing row promoted with refined estimates.",
+                "unchanged": "Conflict: existing row retained.",
+            }[actions.get(row.source_index, "unchanged")],
         )
         for row in normalized
     ]
-    inserted = len(inserted_indices)
-    duplicates = len(normalized) - inserted
+    inserted = sum(action == "inserted" for action in actions.values())
+    promoted = sum(action == "promoted" for action in actions.values())
+    duplicates = len(normalized) - inserted - promoted
     return BatchWriteResponse(
         status=200,
         received=len(request.rows),
         accepted=len(normalized),
         rejected=len(errors),
         inserted=inserted,
+        promoted=promoted,
         duplicates=duplicates,
         results=results,
         errors=errors,

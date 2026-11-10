@@ -58,10 +58,15 @@ class RegistryHashingTests(unittest.TestCase):
         session = Session()
         observer = RegistryObserver("http://api/socialwatcher/v2", "secret", "crawler-1", session)
         observer.finish({"attempt_id": 1, "attempt_token": "token"}, "failed", 7,
-                        {200: 2, 409: 3, 400: 1, 503: 1}, "non-terminal row outcomes")
+                        {200: 2, 409: 3, 400: 1, 503: 1},
+                        {"inserted": 1, "promoted": 1, "unchanged": 3, "rejected": 1},
+                        "non-terminal row outcomes")
         _, payload, _ = session.calls[0]
         self.assertEqual((payload["rows_200"], payload["rows_409"], payload["rows_400"], payload["rows_5xx"]),
                          (2, 3, 1, 1))
+        self.assertEqual((payload["rows_inserted"], payload["rows_promoted"],
+                          payload["rows_unchanged"], payload["rows_rejected"]),
+                         (1, 1, 3, 1))
         self.assertNotIn("rows", payload)
         self.assertNotIn("source", json.dumps(payload))
 

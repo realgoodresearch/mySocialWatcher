@@ -23,6 +23,7 @@ class RegistryRebuildTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.name = 'socialwatcher-registry-test-' + uuid.uuid4().hex[:12]
+        cls.migration_count = len(list((ROOT / 'docker/datahub/migrations').glob('[0-9]*.sql')))
         cls.docker('run', '--detach', '--name', cls.name, '--network', 'none',
                    '--tmpfs', '/var/lib/postgresql',
                    '-e', 'POSTGRES_USER=registry_test', '-e', 'POSTGRES_DB=registry_test',
@@ -37,7 +38,8 @@ class RegistryRebuildTests(unittest.TestCase):
                            'for i in {1..60}; do '
                            'pg_isready -h 127.0.0.1 -U registry_test -d registry_test >/dev/null && '
                            'psql -U registry_test -d registry_test -Atc "SELECT count(*) FROM schema_migrations" '
-                           '2>/dev/null | grep -qx 3 && exit 0; sleep 1; done; exit 1', check=False)
+                           f'2>/dev/null | grep -qx {cls.migration_count} && exit 0; '
+                           'sleep 1; done; exit 1', check=False)
         if result.returncode:
             raise RuntimeError(cls.docker('logs', cls.name).stdout + cls.docker('logs', cls.name).stderr)
 
@@ -59,7 +61,8 @@ class RegistryRebuildTests(unittest.TestCase):
                     'api_version','completion_policy_version','retry_of','claim_token','started_at',
                     'lease_expires_at','finished_at','outcome','total_rows','rows_200','rows_409',
                     'rows_400','accepted_400','rows_401','rows_5xx','rows_other','corrupt_rows','error_summary',
-                    'attempt_mode','contributor_id','client_request_id','start_decision'):
+                    'attempt_mode','contributor_id','client_request_id','start_decision',
+                    'rows_inserted','rows_promoted','rows_unchanged','rows_rejected'):
             self.assertIn(col, cols)
         indexes = self.sql("SELECT indexname FROM pg_indexes WHERE tablename LIKE 'crawler_%';").stdout
         for index in ('crawler_one_active_claim','crawler_attempt_history','crawler_expiring_claims',
@@ -120,19 +123,34 @@ class RegistryRebuildTests(unittest.TestCase):
         ).stdout.strip().split('|')
         self.assertEqual(claimed[0], 'process')
         self.assertEqual(self.sql(
-            f"SELECT crawler_finish_v2({observed[1]},'{observed[2]}',1,'completed',1,1);"
+            f"SELECT crawler_finish_v2({observed[1]},'{observed[2]}',1,'completed',"
+            "1,1,0,0,0,0,0,0,NULL,1,0,0,0);"
         ).stdout.strip(), 't')
         # An observed completion is not authoritative for enforced claim decisions.
         self.assertEqual(self.sql(
             f"SELECT crawler_renew_v2({claimed[1]},'{claimed[2]}',1,60) IS NOT NULL;"
         ).stdout.strip(), 't')
         self.assertEqual(self.sql(
-            f"SELECT crawler_finish_v2({claimed[1]},'{claimed[2]}',1,'completed',1,1);"
+            f"SELECT crawler_finish_v2({claimed[1]},'{claimed[2]}',1,'completed',"
+            "1,1,0,0,0,0,0,0,NULL,1,0,0,0);"
         ).stdout.strip(), 't')
         self.assertEqual(self.sql(
             f"SELECT * FROM crawler_claim_v2('{h}','source/file.csv.gz',100,'test','crawler',1,"
             "'323e4567-e89b-12d3-a456-426614174000');"
         ).stdout.strip().split('|')[0], 'already_completed')
+
+        rejected = self.sql(
+            "SELECT * FROM crawler_observe_v2('" + ('e' * 64) + "','source/rejected.csv.gz',"
+            "100,'test','observer',1,'423e4567-e89b-12d3-a456-426614174000');"
+        ).stdout.strip().split('|')
+        self.assertEqual(self.sql(
+            f"SELECT crawler_finish_v2({rejected[1]},'{rejected[2]}',1,"
+            "'completed_with_rejections',1,0,0,1,0,0,0,0,NULL,0,0,0,1);"
+        ).stdout.strip(), 't')
+        self.assertEqual(self.sql(
+            f"SELECT outcome, completion_policy_version, rows_rejected "
+            f"FROM crawler_file_attempts WHERE id={rejected[1]};"
+        ).stdout.strip(), 'completed_with_rejections|v2-actions|1')
 
     def test_transactional_rollback_and_concurrent_migrations(self):
         self.sql('CREATE DATABASE migration_failure_test;')
@@ -150,11 +168,13 @@ class RegistryRebuildTests(unittest.TestCase):
                 'POSTGRES_DB=migration_failure_test', self.name, 'bash', '/schema/migrate.sh'), range(2)))
         self.assertTrue(all(r.returncode == 0 for r in results))
         self.assertEqual(self.sql('SELECT count(*) FROM schema_migrations;',
-                                  db='migration_failure_test').stdout.strip(), '3')
+                                  db='migration_failure_test').stdout.strip(),
+                         str(self.migration_count))
 
     def test_migration_rerun_and_legacy_upgrade(self):
         self.docker('exec', self.name, 'bash', '/schema/migrate.sh')
-        self.assertEqual(self.sql('SELECT count(*) FROM schema_migrations;').stdout.strip(), '3')
+        self.assertEqual(self.sql('SELECT count(*) FROM schema_migrations;').stdout.strip(),
+                         str(self.migration_count))
         self.sql('CREATE DATABASE legacy_test;')
         baseline = (ROOT / 'docker/datahub/migrations/0001_initial.sql').read_text()
         self.sql(baseline, db='legacy_test')
@@ -168,7 +188,9 @@ class RegistryRebuildTests(unittest.TestCase):
             self.assertEqual(sorted(self.sql(query).stdout.splitlines()),
                              sorted(self.sql(query, db='legacy_test').stdout.splitlines()))
         self.assertEqual(self.claim('c' * 64, db='legacy_test')[0], 'process')
-        self.assertEqual(self.sql('SELECT count(*) FROM schema_migrations;', db='legacy_test').stdout.strip(), '3')
+        self.assertEqual(self.sql('SELECT count(*) FROM schema_migrations;',
+                                  db='legacy_test').stdout.strip(),
+                         str(self.migration_count))
         # Applied SQL is immutable; mismatch must fail without replacing the ledger.
         self.sql("UPDATE schema_migrations SET checksum=repeat('0',64) WHERE version='0002_crawler_file_registry';", db='legacy_test')
         result = self.docker('exec', '-e', 'POSTGRES_DB=legacy_test', self.name, 'bash', '/schema/migrate.sh', check=False)
@@ -189,6 +211,7 @@ class RegistryEndToEndTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         suffix = uuid.uuid4().hex[:12]
+        cls.migration_count = len(list((ROOT / 'docker/datahub/migrations').glob('[0-9]*.sql')))
         cls.network = f'socialwatcher-registry-e2e-{suffix}'
         cls.database = f'socialwatcher-registry-db-{suffix}'
         cls.api = f'socialwatcher-registry-api-{suffix}'
@@ -208,7 +231,8 @@ class RegistryEndToEndTests(unittest.TestCase):
                            'for i in {1..60}; do '
                            'pg_isready -h 127.0.0.1 -U registry_test -d registry_test >/dev/null && '
                            'psql -U registry_test -d registry_test -Atc "SELECT count(*) FROM schema_migrations" '
-                           '2>/dev/null | grep -qx 3 && exit 0; sleep 1; done; exit 1', check=False)
+                           f'2>/dev/null | grep -qx {cls.migration_count} && exit 0; '
+                           'sleep 1; done; exit 1', check=False)
         if ready.returncode:
             raise RuntimeError(cls.docker('logs', cls.database).stdout)
         cls.docker('exec', cls.database, 'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', 'registry_test',
@@ -254,9 +278,10 @@ assert (root / 'crawler/collector/finished/dataframe_collected_finished_fixture_
         self.assertEqual(self.sql("SELECT content_sha256 ~ '^[0-9a-f]{64}$' FROM crawler_files;"), 't',
                          result.stdout + result.stderr + self.docker('logs', self.api).stdout
                          + self.docker('logs', self.database).stdout)
-        self.assertEqual(self.sql("SELECT relative_path, attempt_mode, outcome, total_rows, rows_200, rows_409 "
+        self.assertEqual(self.sql("SELECT relative_path, attempt_mode, outcome, total_rows, rows_200, rows_409, "
+                                  "rows_inserted, rows_promoted, rows_unchanged, rows_rejected "
                                   "FROM crawler_file_attempts;"),
-                         'collector/finished/dataframe_collected_finished_fixture.csv.gz|observe|completed|1|1|0')
+                         'collector/finished/dataframe_collected_finished_fixture.csv.gz|observe|completed|1|1|0|1|0|0|0')
 
 
 if __name__ == '__main__':

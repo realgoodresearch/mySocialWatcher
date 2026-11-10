@@ -1,0 +1,16 @@
+[Unit]
+Description=Create verified SocialWatcher PostgreSQL backup
+After=docker.service
+Requires=docker.service
+ConditionPathExists=/home/doug/git/realgoodresearch/mySocialWatcher/utils/backup/datahub_backup.sh
+
+[Service]
+Type=oneshot
+User=doug
+WorkingDirectory=/home/doug/git/realgoodresearch/mySocialWatcher
+Environment=BACKUP_ROOT=/home/backup/socialwatcher
+ExecStart=/home/doug/git/realgoodresearch/mySocialWatcher/utils/backup/datahub_backup.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+TimeoutStartSec=infinity

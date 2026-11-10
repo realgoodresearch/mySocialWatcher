@@ -74,7 +74,9 @@ class RegistryObserver:
         return body
 
     def finish(self, attempt: dict, outcome: str, total_rows: int | None,
-               status_counts: dict[int, int], error_summary: str | None = None) -> None:
+               status_counts: dict[int, int], action_counts: dict[str, int] | None = None,
+               error_summary: str | None = None) -> None:
+        action_counts = action_counts or {}
         payload = {
             "token": self.token,
             "attempt_token": attempt["attempt_token"],
@@ -88,6 +90,10 @@ class RegistryObserver:
             "rows_other": sum(count for status, count in status_counts.items()
                               if status not in {200, 400, 401, 409} and not 500 <= status <= 599),
             "corrupt_rows": 0,
+            "rows_inserted": action_counts.get("inserted", 0),
+            "rows_promoted": action_counts.get("promoted", 0),
+            "rows_unchanged": action_counts.get("unchanged", 0),
+            "rows_rejected": action_counts.get("rejected", 0),
             "error_summary": error_summary,
         }
         try:

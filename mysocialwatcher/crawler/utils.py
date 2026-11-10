@@ -5,12 +5,13 @@ import math
 import numpy
 import datetime
 import warnings
+from pathlib import Path
 from time import sleep
 from pathlib import Path
 import pandas as pd
 from ast import literal_eval
 
-from mysocialwatcher.crawler.batch import submit_dataframe_v2
+from mysocialwatcher.crawler.batch import mark_better_estimates, submit_dataframe_v2
 from mysocialwatcher.crawler.registry import RegistryError, RegistryObserver
 
 
@@ -238,6 +239,7 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         temp_path = out_path.replace('log.csv.gz', 'temp.txt')
         error_path = out_path.replace('log.csv.gz', 'error.txt')
+        checkpoint_path = out_path.replace('_log.csv.gz', '_partial_log.csv.gz')
 
         if not os.path.exists(out_path) and not os.path.exists(temp_path) and not os.path.exists(error_path):
             # Atomically claim the file: only one replica may create the marker.
@@ -259,6 +261,9 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
                 # load data
                 df = pd.read_csv(file)
 
+                if "_betterestimate.csv" in os.path.basename(file):
+                    df = mark_better_estimates(df)
+
                 collection_name = file.split('/')[-3].lstrip('_')
 
                 if observer:
@@ -274,7 +279,8 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
                         collection=collection_name,
                         url=url,
                         token=token,
-                        batch_size=batch_size)
+                        batch_size=batch_size,
+                        checkpoint_path=Path(checkpoint_path))
                 else:
                     response = psw_to_sql(
                         df=df,
@@ -288,14 +294,22 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
 
                 if attempt:
                     status_counts = response['status_api'].value_counts().astype(int).to_dict()
+                    action_counts = response['action_api'].value_counts().astype(int).to_dict()
                     complete = (len(response) == len(df)
-                                and set(status_counts).issubset({200, 409}))
+                                and sum(action_counts.values()) == len(df)
+                                and set(action_counts).issubset(
+                                    {'inserted', 'promoted', 'unchanged', 'rejected'}))
+                    outcome = ('completed_with_rejections'
+                               if complete and action_counts.get('rejected', 0)
+                               else 'completed' if complete else 'failed')
                     try:
-                        observer.finish(attempt, 'completed' if complete else 'failed',
-                                        len(df), status_counts,
+                        observer.finish(attempt, outcome, len(df), status_counts,
+                                        action_counts,
                                         None if complete else 'non-terminal row outcomes')
                     except RegistryError as registry_error:
                         warnings.warn(str(registry_error))
+                if os.path.exists(checkpoint_path):
+                    os.remove(checkpoint_path)
                 
                 with open(temp_path, "a") as f:
                     f.write('[' + str(datetime.datetime.now()) + '] Completed' + '\n')
@@ -303,7 +317,7 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
             except Exception as e:
                 if attempt:
                     try:
-                        observer.finish(attempt, 'failed', None, {}, type(e).__name__)
+                        observer.finish(attempt, 'failed', None, {}, {}, type(e).__name__)
                     except RegistryError as registry_error:
                         warnings.warn(str(registry_error))
                 with open(temp_path, "a") as f:

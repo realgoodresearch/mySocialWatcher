@@ -15,12 +15,14 @@ class BatchWriteRequest(BaseModel):
 class RowError(BaseModel):
     source_index: int
     status: Literal[400]
+    action: Literal["rejected"] = "rejected"
     message: str
 
 
 class RowResult(BaseModel):
     source_index: int
     status: Literal[200, 409]
+    action: Literal["inserted", "promoted", "unchanged"]
     message: str
 
 
@@ -30,6 +32,7 @@ class BatchWriteResponse(BaseModel):
     accepted: int
     rejected: int
     inserted: int
+    promoted: int
     duplicates: int
     results: list[RowResult]
     errors: list[RowError]
@@ -82,4 +85,8 @@ class AttemptFinishRequest(BaseModel):
     rows_5xx: int = Field(default=0, ge=0)
     rows_other: int = Field(default=0, ge=0)
     corrupt_rows: int = Field(default=0, ge=0)
+    rows_inserted: int = Field(default=0, ge=0)
+    rows_promoted: int = Field(default=0, ge=0)
+    rows_unchanged: int = Field(default=0, ge=0)
+    rows_rejected: int = Field(default=0, ge=0)
     error_summary: str | None = Field(default=None, max_length=1000)

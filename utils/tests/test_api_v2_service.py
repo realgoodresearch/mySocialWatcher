@@ -30,7 +30,7 @@ class FakeWriter:
     def write(self, token, collection, rows):
         self.call = (token, collection, rows)
         inserted = len(rows) if self.inserted is None else self.inserted
-        return {row.source_index for row in rows[:inserted]}
+        return {row.source_index: "inserted" for row in rows[:inserted]}
 
 
 class BatchServiceTests(unittest.TestCase):
@@ -49,9 +49,22 @@ class BatchServiceTests(unittest.TestCase):
         result = process_batch(BatchWriteRequest(
             token="secret", collection="test", rows=[valid_row(0), valid_row(1)]
         ), writer)
-        self.assertEqual((result.inserted, result.duplicates), (1, 1))
+        self.assertEqual((result.inserted, result.promoted, result.duplicates), (1, 0, 1))
         self.assertEqual([item.status for item in result.results], [200, 409])
-        self.assertEqual(result.results[1].message, "Conflict: row already exists.")
+        self.assertEqual([item.action for item in result.results], ["inserted", "unchanged"])
+        self.assertEqual(result.results[1].message, "Conflict: existing row retained.")
+
+    def test_reports_promoted_action_and_aggregate(self):
+        class PromotionWriter(FakeWriter):
+            def write(self, token, collection, rows):
+                return {rows[0].source_index: "promoted"}
+
+        result = process_batch(BatchWriteRequest(
+            token="secret", collection="test", rows=[valid_row()]
+        ), PromotionWriter())
+        self.assertEqual((result.inserted, result.promoted, result.duplicates), (0, 1, 0))
+        self.assertEqual(result.results[0].action, "promoted")
+        self.assertEqual(result.results[0].status, 200)
 
     def test_duplicate_source_index_is_rejected(self):
         writer = FakeWriter()
