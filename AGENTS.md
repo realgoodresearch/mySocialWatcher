@@ -4,6 +4,18 @@ This file is the working agreement for people and agents contributing to this
 repository. Keep it current when the team adopts or changes a material process
 or engineering rule.
 
+## Repository identity
+
+- The canonical GitHub repository for this working tree is
+  `realgoodresearch/mySocialWatcher`, represented by the `origin` remote.
+- `OxfordDemSci/mySocialWatcher` is an upstream repository. Do not create or
+  modify its issues, comments, pull requests, releases, or other GitHub state
+  unless the user explicitly requests work in that repository.
+- Before any GitHub write, verify the destination against `git remote get-url
+  origin` and pass `--repo realgoodresearch/mySocialWatcher` (or the equivalent
+  explicit repository argument). Do not infer the destination from issue
+  numbers, earlier links, commit history, or the `upstream` remote.
+
 ## Issue-driven work
 
 1. Start work with a GitHub issue that states the problem, desired outcome,
