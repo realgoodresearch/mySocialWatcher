@@ -298,14 +298,13 @@ args = dict(data_dir=str(root), token='registry-e2e-token',
             url='http://api:8001/socialwatcher/v2/write-batch', api_mode='v2',
             registry_mode='enforce', registry_url='http://api:8001/socialwatcher/v2',
             crawler_instance='e2e-enforcer', registry_lease_seconds=60,
-            crawl_run_mode='historical', crawl_date_from='2024-01-01',
-            crawl_date_to='2024-01-31', crawl_path_prefix='enforced/',
-            recrawl_run_id='e2e-history')
+            crawl_date_from='2024-01-01', crawl_date_to='2024-01-31',
+            crawl_path_prefix='enforced/')
 legacy = root / 'crawler/enforced/finished/dataframe_collected_finished_enforced_20240115_log.csv.gz'
 legacy.parent.mkdir(parents=True)
 legacy.write_text('preserved legacy log')
 crawler(**args)
-log = root / 'crawler/recrawl/e2e-history/enforced/finished/dataframe_collected_finished_enforced_20240115_log.csv.gz'
+log = root / 'crawler/registry/enforced/finished/dataframe_collected_finished_enforced_20240115_log.csv.gz'
 assert log.exists()
 assert legacy.read_text() == 'preserved legacy log'
 log.unlink()

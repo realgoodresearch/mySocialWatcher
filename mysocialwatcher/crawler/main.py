@@ -11,11 +11,9 @@ registry_mode = os.environ.get('REGISTRY_MODE', 'off').lower()
 registry_url = os.environ.get('REGISTRY_URL')
 registry_instance = os.environ.get('CRAWLER_INSTANCE', 'crawler')
 registry_lease_seconds = int(os.environ.get('REGISTRY_LEASE_SECONDS', '900'))
-crawl_run_mode = os.environ.get('CRAWL_RUN_MODE', 'normal').lower()
 crawl_date_from = os.environ.get('CRAWL_DATE_FROM')
 crawl_date_to = os.environ.get('CRAWL_DATE_TO')
 crawl_path_prefix = os.environ.get('CRAWL_PATH_PREFIX')
-recrawl_run_id = os.environ.get('RECRAWL_RUN_ID')
 
 
 if __name__ == "__main__":
@@ -29,8 +27,6 @@ if __name__ == "__main__":
             registry_url=registry_url,
             crawler_instance=registry_instance,
             registry_lease_seconds=registry_lease_seconds,
-            crawl_run_mode=crawl_run_mode,
             crawl_date_from=crawl_date_from,
             crawl_date_to=crawl_date_to,
-            crawl_path_prefix=crawl_path_prefix,
-            recrawl_run_id=recrawl_run_id)
+            crawl_path_prefix=crawl_path_prefix)

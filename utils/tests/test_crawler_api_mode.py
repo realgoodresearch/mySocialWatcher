@@ -71,7 +71,7 @@ class CrawlerModeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "requires API_MODE=v2"):
             crawler(str(self.root), "token", "http://v1", registry_mode="observe", registry_url="http://registry")
 
-    def test_historical_mode_filters_by_filename_date_and_writes_separate_log(self):
+    def test_registry_mode_filters_by_filename_date_and_writes_separate_log(self):
         selected = self.source.with_name(
             "dataframe_collected_finished_test_20240115.csv.gz")
         excluded = self.source.with_name(
@@ -93,11 +93,11 @@ class CrawlerModeTests(unittest.TestCase):
              patch("mysocialwatcher.crawler.utils.submit_dataframe_v2", side_effect=self.response) as v2:
             crawler(str(self.root), "token", "http://v2", api_mode="v2",
                     registry_mode="enforce", registry_url="http://registry",
-                    crawl_run_mode="historical", crawl_date_from="2024-01-01",
+                    crawl_date_from="2024-01-01",
                     crawl_date_to="2024-01-31", crawl_path_prefix="host/",
-                    recrawl_run_id="batch-001")
+                    crawler_instance="test")
         self.assertEqual(v2.call_count, 1)
-        log = (self.root / "crawler/recrawl/batch-001/host/collection/finished/"
+        log = (self.root / "crawler/registry/host/collection/finished/"
                "dataframe_collected_finished_test_20240115_log.csv.gz")
         self.assertTrue(log.exists())
 
@@ -105,7 +105,7 @@ class CrawlerModeTests(unittest.TestCase):
         selected = self.source.with_name(
             "dataframe_collected_finished_test_20240115.csv.gz")
         self.source.rename(selected)
-        marker = (self.root / "crawler/recrawl/batch-001/host/collection/finished/"
+        marker = (self.root / "crawler/registry/host/collection/finished/"
                   "dataframe_collected_finished_test_20240115_temp.txt")
         marker.parent.mkdir(parents=True)
         marker.write_text("stale", encoding="utf-8")
@@ -129,8 +129,7 @@ class CrawlerModeTests(unittest.TestCase):
                    side_effect=respond_without_marker) as v2:
             crawler(str(self.root), "token", "http://v2", api_mode="v2",
                     registry_mode="enforce", registry_url="http://registry",
-                    crawl_run_mode="historical", crawl_date_from="2024-01-01",
-                    crawl_date_to="2024-01-31", recrawl_run_id="batch-001")
+                    crawl_date_from="2024-01-01", crawl_date_to="2024-01-31")
 
         self.assertEqual(v2.call_count, 1)
         self.assertFalse(marker.exists())
@@ -165,10 +164,9 @@ class CrawlerModeTests(unittest.TestCase):
             for _ in range(2):
                 crawler(str(self.root), "token", "http://v2", api_mode="v2",
                         registry_mode="enforce", registry_url="http://registry",
-                        crawl_run_mode="historical", crawl_date_from="2024-01-01",
-                        crawl_date_to="2024-01-31", recrawl_run_id="batch-001")
+                        crawl_date_from="2024-01-01", crawl_date_to="2024-01-31")
 
-        marker = (self.root / "crawler/recrawl/batch-001/host/collection/finished/"
+        marker = (self.root / "crawler/registry/host/collection/finished/"
                   "dataframe_collected_finished_test_20240115_temp.txt")
         log = marker.with_name("dataframe_collected_finished_test_20240115_log.csv.gz")
         self.assertEqual(v2.call_count, 2)
@@ -176,15 +174,35 @@ class CrawlerModeTests(unittest.TestCase):
         self.assertFalse(marker.exists())
         self.assertTrue(log.exists())
 
-    def test_historical_mode_requires_enforcement_run_id_and_filter(self):
-        with self.assertRaisesRegex(ValueError, "REGISTRY_MODE=enforce"):
+    def test_enforce_uses_registry_despite_legacy_completion_log(self):
+        legacy_log = (self.root / "crawler/host/collection/finished/"
+                      "dataframe_collected_finished_test_log.csv.gz")
+        legacy_log.parent.mkdir(parents=True)
+        legacy_log.write_text("legacy", encoding="utf-8")
+
+        class Registry:
+            def claim(self, *args):
+                return {"decision": "process", "attempt_id": 5,
+                        "attempt_token": "token"}
+
+            def renew(self, *args):
+                return None
+
+            def finish(self, *args):
+                return None
+
+        with patch("mysocialwatcher.crawler.utils.RegistryObserver",
+                   return_value=Registry()), \
+             patch("mysocialwatcher.crawler.utils.submit_dataframe_v2",
+                   side_effect=self.response) as v2:
             crawler(str(self.root), "token", "http://v2", api_mode="v2",
-                    crawl_run_mode="historical", recrawl_run_id="batch",
-                    crawl_date_from="2024-01-01")
-        with self.assertRaisesRegex(ValueError, "date bound or path prefix"):
-            crawler(str(self.root), "token", "http://v2", api_mode="v2",
-                    registry_mode="enforce", registry_url="http://registry",
-                    crawl_run_mode="historical", recrawl_run_id="batch")
+                    registry_mode="enforce", registry_url="http://registry")
+
+        self.assertEqual(v2.call_count, 1)
+        self.assertEqual(legacy_log.read_text(encoding="utf-8"), "legacy")
+        registry_log = (self.root / "crawler/registry/host/collection/finished/"
+                        "dataframe_collected_finished_test_log.csv.gz")
+        self.assertTrue(registry_log.exists())
 
 
 if __name__ == "__main__":

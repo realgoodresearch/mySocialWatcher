@@ -227,8 +227,7 @@ def governor(func, hours=1):
 def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
             api_mode='v1', batch_size=500, registry_mode='off', registry_url=None,
             crawler_instance='crawler', registry_lease_seconds=900,
-            crawl_run_mode='normal', crawl_date_from=None, crawl_date_to=None,
-            crawl_path_prefix=None, recrawl_run_id=None):
+            crawl_date_from=None, crawl_date_to=None, crawl_path_prefix=None):
     # crawl_dir = 'data/_test'
 
     print('-----------------------------')
@@ -247,20 +246,11 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
         raise ValueError("REGISTRY_URL is required when REGISTRY_MODE is enabled")
     if not 1 <= registry_lease_seconds <= 86400:
         raise ValueError("REGISTRY_LEASE_SECONDS must be between 1 and 86400")
-    if crawl_run_mode not in {'normal', 'historical'}:
-        raise ValueError("CRAWL_RUN_MODE must be 'normal' or 'historical'")
     date_from = parse_crawl_date_bound(crawl_date_from, 'CRAWL_DATE_FROM')
     date_to = parse_crawl_date_bound(crawl_date_to, 'CRAWL_DATE_TO')
     if date_from and date_to and date_from > date_to:
         raise ValueError("CRAWL_DATE_FROM must not be after CRAWL_DATE_TO")
     path_prefix = normalize_path_prefix(crawl_path_prefix)
-    if crawl_run_mode == 'historical':
-        if registry_mode != 'enforce':
-            raise ValueError("historical crawling requires REGISTRY_MODE=enforce")
-        if not recrawl_run_id or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}', recrawl_run_id):
-            raise ValueError("RECRAWL_RUN_ID must be a filesystem-safe identifier")
-        if not (date_from or date_to or path_prefix):
-            raise ValueError("historical crawling requires a date bound or path prefix")
     registry = (RegistryObserver(registry_url, token, crawler_instance)
                 if registry_mode != 'off' else None)
 
@@ -290,8 +280,10 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
         # file = file_list[0]
         # file = 'C:/Users/edithd/Documents/mySocialWatcher/data/saffron/ukraine_admin2_tessellation/finished/dataframe_collected_finished_1_facebook_all_admin2_20240328.csv'
 
-        log_root = (os.path.join(crawl_dir, 'recrawl', recrawl_run_id)
-                    if crawl_run_mode == 'historical' else crawl_dir)
+        # Enforced runs use the registry as their completion authority. Keep their
+        # reports separate so legacy completion logs remain unchanged.
+        log_root = (os.path.join(crawl_dir, 'registry')
+                    if registry_mode == 'enforce' else crawl_dir)
         out_path = file.replace(data_dir, log_root).replace('.csv.gz', '_log.csv.gz')
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         temp_path = out_path.replace('log.csv.gz', 'temp.txt')
@@ -299,9 +291,10 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
         checkpoint_path = out_path.replace('_log.csv.gz', '_partial_log.csv.gz')
         uses_temp_marker = registry_mode != 'enforce'
 
-        if (not os.path.exists(out_path)
+        if (registry_mode == 'enforce'
+                or (not os.path.exists(out_path)
                 and (not uses_temp_marker or not os.path.exists(temp_path))
-                and not os.path.exists(error_path)):
+                and not os.path.exists(error_path))):
             if uses_temp_marker:
                 # Coordinate modes that do not have an authoritative registry claim.
                 try:
@@ -310,8 +303,10 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
                 except FileExistsError:
                     continue
 
-            # Another replica may have finished after our initial checks.
-            if os.path.exists(out_path) or os.path.exists(error_path):
+            # Another replica may have finished after our initial checks. Enforced
+            # runs defer this decision to the authoritative registry claim below.
+            if (registry_mode != 'enforce'
+                    and (os.path.exists(out_path) or os.path.exists(error_path))):
                 if uses_temp_marker:
                     os.remove(temp_path)
                 continue

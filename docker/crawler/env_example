@@ -14,11 +14,9 @@ API_BATCH_SIZE=500
 REGISTRY_MODE=off
 REGISTRY_URL=http://127.0.0.1:8001/socialwatcher/v2
 REGISTRY_LEASE_SECONDS=900
-CRAWL_RUN_MODE=normal
-# Historical mode requires REGISTRY_MODE=enforce, RECRAWL_RUN_ID, and at least one filter.
+# Optional inclusive date and path filters apply to registry and legacy runs.
 # CRAWL_DATE_FROM=2020-01-01
 # CRAWL_DATE_TO=2020-01-31
 # CRAWL_PATH_PREFIX=serenity/migration_asia_pacific/
-# RECRAWL_RUN_ID=historical-2020-01
 CRAWLER_INSTANCE=crawler-1
 API_BATCH_SIZE=500

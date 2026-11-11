@@ -72,7 +72,9 @@ A single crawler can be launched as a background process by executing `docker co
 
 Many crawlers can be launched simultaneously using `docker compose up -d` from `./docker/crawler/`. Set `CRAWLER_REPLICAS` in `./docker/crawler/.env` to choose the number of crawlers; it defaults to four and can be set to one when desired. Crawlers create temporary files in the appropriate sub-folder of `./data/crawler/` to coordinate work. If the processes are killed before finishing (for example, during a reboot), remove those temporary files before restarting so the affected data files can be crawled again.
 
-Historical recrawls use `CRAWL_RUN_MODE=historical` with `REGISTRY_MODE=enforce`. Set a filesystem-safe `RECRAWL_RUN_ID` and select files with `CRAWL_DATE_FROM`, `CRAWL_DATE_TO`, and/or a `CRAWL_PATH_PREFIX` relative to `DATA_DIR`. Date bounds are inclusive and use the `YYYYMMDD` crawl date at the end of each source filename. Historical runs preserve existing crawler logs and write their own logs beneath `data/crawler/recrawl/<run-id>/`. The registry makes rerunning the same selection safe by skipping content that already completed.
+With `REGISTRY_MODE=enforce`, the registry is the crawler's completion authority. The crawler considers every eligible source file from newest to oldest, skips content already completed in the registry, and writes reports beneath `data/crawler/registry/` without changing legacy completion logs. This allows the routine midnight restart to process newly synced files first and then continue backward through uncrawled history.
+
+Optionally limit any crawl with `CRAWL_DATE_FROM`, `CRAWL_DATE_TO`, and/or `CRAWL_PATH_PREFIX` relative to `DATA_DIR`. Date bounds are inclusive and use the `YYYYMMDD` crawl date at the end of each source filename. Omitting all filters selects every eligible source file.
 
 Enforced registry runs use the database claim for replica coordination and do not create `temp.txt` markers. A successful claim removes a stale legacy marker for that file. Registry `off` and `observe` modes retain filesystem markers because they do not have an authoritative database claim.
 
