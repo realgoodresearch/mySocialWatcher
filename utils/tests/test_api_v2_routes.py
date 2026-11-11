@@ -49,6 +49,16 @@ class RegistryWriter:
 
 
 class RouteTests(unittest.TestCase):
+    def test_v2_root_serves_interactive_documentation(self):
+        client = TestClient(app)
+        response = client.get("/socialwatcher/v2", follow_redirects=False)
+        self.assertEqual(response.status_code, 307)
+        self.assertEqual(response.headers["location"], "/socialwatcher/v2/docs")
+        docs = client.get(response.headers["location"])
+        self.assertEqual(docs.status_code, 200)
+        self.assertIn("text/html", docs.headers["content-type"])
+        self.assertIn("/socialwatcher/v2/openapi.json", docs.text)
+
     def tearDown(self):
         app.dependency_overrides.clear()
 

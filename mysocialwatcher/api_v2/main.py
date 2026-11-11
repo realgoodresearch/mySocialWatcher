@@ -2,7 +2,7 @@ from functools import lru_cache
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from mysocialwatcher.api_v2.database import (
     AuthenticationError,
@@ -20,10 +20,16 @@ from mysocialwatcher.api_v2.service import process_batch
 
 app = FastAPI(
     title="Social Watcher API",
-    version="2.0.0-dev",
+    version="2.0.0",
     docs_url="/socialwatcher/v2/docs",
     openapi_url="/socialwatcher/v2/openapi.json",
 )
+
+
+@app.get("/socialwatcher/v2", include_in_schema=False)
+def api_documentation() -> RedirectResponse:
+    """Keep the version root as the stable public documentation URL."""
+    return RedirectResponse(url="/socialwatcher/v2/docs")
 
 
 @app.exception_handler(RequestValidationError)

@@ -68,19 +68,41 @@ For the routine logical-backup workflow used with Borg, see
 ### Crawlers
 The crawlers require an environment file to exist in `./docker/crawler/.env` to define a data directory and datahub API credentials.
 
+Production uses API v2 and the file registry. The API token must have write access because both batch ingestion and registry claims are authenticated writes. The essential settings are:
+
+```dotenv
+DATA_DIR=data
+CRAWLER_REPLICAS=4
+API_MODE=v2
+API_URL=http://serenity/socialwatcher/v2/write-batch
+API_BATCH_SIZE=500
+REGISTRY_MODE=enforce
+REGISTRY_URL=http://serenity/socialwatcher/v2
+REGISTRY_LEASE_SECONDS=900
+CRAWLER_INSTANCE=daily-crawler
+```
+
+Interactive API v2 documentation is available at <https://api.realgoodresearch.com/socialwatcher/v2>.
+
 A single crawler can be launched as a background process by executing `docker compose up -d` from `./docker/crawler/`.
 
-Many crawlers can be launched simultaneously using `docker compose up -d` from `./docker/crawler/`. Set `CRAWLER_REPLICAS` in `./docker/crawler/.env` to choose the number of crawlers; it defaults to four and can be set to one when desired. Crawlers create temporary files in the appropriate sub-folder of `./data/crawler/` to coordinate work. If the processes are killed before finishing (for example, during a reboot), remove those temporary files before restarting so the affected data files can be crawled again.
+Many crawlers can be launched simultaneously using `docker compose up -d` from `./docker/crawler/`. Set `CRAWLER_REPLICAS` in `./docker/crawler/.env` to choose the number of crawlers; it defaults to four and can be set to one when desired.
 
-With `REGISTRY_MODE=enforce`, the registry is the crawler's completion authority. The crawler considers every eligible source file from newest to oldest, skips content already completed in the registry, and writes reports beneath `data/crawler/registry/` without changing legacy completion logs. This allows the routine midnight restart to process newly synced files first and then continue backward through uncrawled history.
+With `REGISTRY_MODE=enforce`, the registry is the crawler's completion authority. The crawler considers every eligible source file by modification time, newest first, skips content already completed in the registry, and writes reports beneath `data/crawler/registry/` without changing legacy completion logs. This allows the routine midnight restart to process newly synced files first and then continue backward through uncrawled history. Registry claims also coordinate replicas and recover expired work after interruption, so enforced runs do not create `temp.txt` markers.
 
-Optionally limit any crawl with `CRAWL_DATE_FROM`, `CRAWL_DATE_TO`, and/or `CRAWL_PATH_PREFIX` relative to `DATA_DIR`. Date bounds are inclusive and use the `YYYYMMDD` crawl date at the end of each source filename. Omitting all filters selects every eligible source file.
+Optionally limit any crawl with `CRAWL_DATE_FROM`, `CRAWL_DATE_TO`, and/or `CRAWL_PATH_PREFIX` relative to `DATA_DIR`. Date bounds are inclusive and use the `YYYYMMDD` crawl date at the end of each source filename. Omitting all filters selects every eligible source file. For example:
 
-Enforced registry runs use the database claim for replica coordination and do not create `temp.txt` markers. A successful claim removes a stale legacy marker for that file. Registry `off` and `observe` modes retain filesystem markers because they do not have an authoritative database claim.
+```dotenv
+CRAWL_DATE_FROM=2026-11-01
+CRAWL_DATE_TO=2026-11-11
+# CRAWL_PATH_PREFIX=serenity/migration_asia_pacific/
+```
+
+Use a stable `CRAWLER_INSTANCE` for operational reporting. The registry identifies file content by its decompressed SHA-256 hash; moving or recompressing identical content does not cause it to be ingested again.
 
 ### Crawler operations and recovery
 
-Crawler completion logs under `data/crawler/` are part of the crawler's state. A completed log prevents the corresponding source file from being processed again, so these logs should not be deleted as routine cleanup. The utilities below either preserve these logs or move them deliberately to trigger recovery. Run commands from the repository root.
+The database registry is production's authoritative completion state. CSV reports under `data/crawler/registry/` are durable diagnostics and should be retained, but deleting or moving one does not make completed content eligible again. Older reports elsewhere under `data/crawler/` are legacy diagnostics. The recovery utilities below predate registry enforcement and remain useful for inspecting or extracting rows from those logs; they do not change registry completion state. Run commands from the repository root.
 
 #### Starting crawlers and cleaning temporary markers
 
@@ -97,6 +119,8 @@ bash utils/daily_crawl_nosync.sh "$PWD"
 ```
 
 Both scripts require the repository path as their argument. The synchronisation script excludes directories named `logs` at any depth. `logs_cleanup.sh` only manages collector `*.log` and `*.log.gz` files beneath those `logs` directories; it does not remove crawler completion logs such as `*_log.csv.gz`.
+
+The production cron job runs `daily_crawl.sh` at midnight. Its stop-and-start cycle prioritizes newly synchronized files, then resumes older registry work. To start a controlled date-limited crawl after editing `.env`, use `daily_crawl_nosync.sh` when no source synchronization is needed. Restarting the same range is safe: completed content is skipped and interrupted claims become retryable after their lease expires.
 
 #### Reporting historical failures
 
@@ -121,7 +145,7 @@ The CSV groups failures by log modification year, collection path, status, and e
 
 #### Quarantining complete failed logs
 
-`quarantine_crawler_logs.py` finds completion logs containing non-2xx responses other than the expected `409 Conflict`. Moving a completion log causes the normal crawler to process the entire original source file again. This is appropriate for corrupt logs or files for which every row should be retried.
+`quarantine_crawler_logs.py` finds legacy completion logs containing non-2xx responses other than the expected `409 Conflict`. Moving a log no longer triggers production reprocessing when its content is complete in the registry. Use date/path filters for a controlled registry crawl; registry state must be handled explicitly if completed content truly needs to be replayed.
 
 Preview recent candidates first:
 
@@ -201,7 +225,7 @@ docker run --rm \
   "$CRAWLER_IMAGE"
 ```
 
-For a large batch, start four detached containers using the same retry directory. Atomic temporary markers ensure each file is claimed by only one crawler:
+For a large recovery batch, start four detached containers using the same retry directory. Production registry claims ensure that only one crawler processes each file:
 
 ```bash
 for replica in 1 2 3 4; do
@@ -214,7 +238,7 @@ for replica in 1 2 3 4; do
 done
 ```
 
-Retry completion logs are written beneath `$RETRY_DIR/crawler`. Check them with:
+Retry completion logs are written beneath `$RETRY_DIR/crawler/registry`. Check them with:
 
 ```bash
 python3 utils/quarantine_crawler_logs.py "$RETRY_DIR/crawler"
@@ -276,5 +300,6 @@ You are free to use, modify, and share the code in this repository under the ter
 Database schema history is maintained in `docker/datahub/migrations/`. Clean
 initialization and existing-database upgrades use the same migration runner; see
 [the API v2 database foundation notes](docs/api-v2.md#file-registry-database-foundation-issue-5)
-for explicit legacy adoption and isolated rebuild testing. Registry rollout has
-not changed production crawler skip behavior.
+for explicit legacy adoption and isolated rebuild testing. Production crawler
+completion and replica coordination are registry-based. The unchanged pre-registry
+crawler is archived in Git tag `legacy-crawler-pre-registry`.
