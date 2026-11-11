@@ -297,18 +297,23 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
         temp_path = out_path.replace('log.csv.gz', 'temp.txt')
         error_path = out_path.replace('log.csv.gz', 'error.txt')
         checkpoint_path = out_path.replace('_log.csv.gz', '_partial_log.csv.gz')
+        uses_temp_marker = registry_mode != 'enforce'
 
-        if not os.path.exists(out_path) and not os.path.exists(temp_path) and not os.path.exists(error_path):
-            # Atomically claim the file: only one replica may create the marker.
-            try:
-                with open(temp_path, "x") as f:
-                    f.write('[' + str(datetime.datetime.now()) + '] Begin processing data...' + '\n')
-            except FileExistsError:
-                continue
+        if (not os.path.exists(out_path)
+                and (not uses_temp_marker or not os.path.exists(temp_path))
+                and not os.path.exists(error_path)):
+            if uses_temp_marker:
+                # Coordinate modes that do not have an authoritative registry claim.
+                try:
+                    with open(temp_path, "x") as f:
+                        f.write('[' + str(datetime.datetime.now()) + '] Begin processing data...' + '\n')
+                except FileExistsError:
+                    continue
 
             # Another replica may have finished after our initial checks.
             if os.path.exists(out_path) or os.path.exists(error_path):
-                os.remove(temp_path)
+                if uses_temp_marker:
+                    os.remove(temp_path)
                 continue
 
             print('[' + str(datetime.datetime.now()) + '] ' + file)
@@ -324,11 +329,14 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
                 except RegistryError as registry_error:
                     warnings.warn(str(registry_error))
                     if registry_mode == 'enforce':
-                        os.remove(temp_path)
                         continue
                 if attempt and attempt['decision'] in {'already_completed', 'in_progress'}:
-                    os.remove(temp_path)
+                    if uses_temp_marker:
+                        os.remove(temp_path)
                     continue
+                if registry_mode == 'enforce' and os.path.exists(temp_path):
+                    # A successful database claim supersedes a stale legacy marker.
+                    os.remove(temp_path)
 
             try:
                 # load data
@@ -383,8 +391,9 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
                 if os.path.exists(checkpoint_path):
                     os.remove(checkpoint_path)
                 
-                with open(temp_path, "a") as f:
-                    f.write('[' + str(datetime.datetime.now()) + '] Completed' + '\n')
+                if uses_temp_marker:
+                    with open(temp_path, "a") as f:
+                        f.write('[' + str(datetime.datetime.now()) + '] Completed' + '\n')
                 
             except RegistryError as e:
                 warnings.warn(str(e))
@@ -393,7 +402,8 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
                         registry.finish(attempt, 'failed', None, {}, {}, type(e).__name__)
                     except RegistryError as registry_error:
                         warnings.warn(str(registry_error))
-                os.remove(temp_path)
+                if uses_temp_marker:
+                    os.remove(temp_path)
             except requests.RequestException as e:
                 if attempt:
                     try:
@@ -401,18 +411,24 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
                     except RegistryError as registry_error:
                         warnings.warn(str(registry_error))
                 warnings.warn(safe_http_error_message(e))
-                os.remove(temp_path)
+                if uses_temp_marker:
+                    os.remove(temp_path)
             except Exception as e:
                 if attempt:
                     try:
                         registry.finish(attempt, 'failed', None, {}, {}, type(e).__name__)
                     except RegistryError as registry_error:
                         warnings.warn(str(registry_error))
-                with open(temp_path, "a") as f:
-                    f.write('[' + str(datetime.datetime.now()) + ']  Exception: \n' + str(e) + '\n')
-                os.rename(temp_path, error_path)
+                if uses_temp_marker:
+                    with open(temp_path, "a") as f:
+                        f.write('[' + str(datetime.datetime.now()) + ']  Exception: \n' + str(e) + '\n')
+                    os.rename(temp_path, error_path)
+                else:
+                    with open(error_path, "w") as f:
+                        f.write('[' + str(datetime.datetime.now()) + ']  Exception: \n' + str(e) + '\n')
             
             else:
-                os.remove(temp_path)
+                if uses_temp_marker:
+                    os.remove(temp_path)
 
 print('[' + str(datetime.datetime.now()) + '] Crawler finished.')

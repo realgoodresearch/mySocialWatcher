@@ -74,6 +74,8 @@ Many crawlers can be launched simultaneously using `docker compose up -d` from `
 
 Historical recrawls use `CRAWL_RUN_MODE=historical` with `REGISTRY_MODE=enforce`. Set a filesystem-safe `RECRAWL_RUN_ID` and select files with `CRAWL_DATE_FROM`, `CRAWL_DATE_TO`, and/or a `CRAWL_PATH_PREFIX` relative to `DATA_DIR`. Date bounds are inclusive and use the `YYYYMMDD` crawl date at the end of each source filename. Historical runs preserve existing crawler logs and write their own logs beneath `data/crawler/recrawl/<run-id>/`. The registry makes rerunning the same selection safe by skipping content that already completed.
 
+Enforced registry runs use the database claim for replica coordination and do not create `temp.txt` markers. A successful claim removes a stale legacy marker for that file. Registry `off` and `observe` modes retain filesystem markers because they do not have an authoritative database claim.
+
 ### Crawler operations and recovery
 
 Crawler completion logs under `data/crawler/` are part of the crawler's state. A completed log prevents the corresponding source file from being processed again, so these logs should not be deleted as routine cleanup. The utilities below either preserve these logs or move them deliberately to trigger recovery. Run commands from the repository root.
