@@ -16,7 +16,7 @@ class RowInput(BaseModel):
     gender: Literal[0, 1, 2]
     age_min: int
     age_max: int = 999
-    dau: int
+    dau: int = -1
     mau: int | None = None
     mau_lower: int | None = None
     mau_upper: int | None = None
