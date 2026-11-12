@@ -73,22 +73,22 @@ Production uses API v2 and the file registry. The API token must have write acce
 ```dotenv
 DATA_DIR=data
 CRAWLER_REPLICAS=4
-API_MODE=v2
 API_URL=http://serenity/socialwatcher/v2/write-batch
 API_BATCH_SIZE=500
-REGISTRY_MODE=enforce
 REGISTRY_URL=http://serenity/socialwatcher/v2
 REGISTRY_LEASE_SECONDS=900
 CRAWLER_INSTANCE=daily-crawler
 ```
 
-Interactive API v2 documentation is available at <https://api.realgoodresearch.com/socialwatcher/v2>.
+Interactive API v2 documentation is available internally at
+`http://serenity/socialwatcher/v2/docs`. Public routing will be enabled after
+the remaining v2 endpoints are complete in issue #10.
 
 A single crawler can be launched as a background process by executing `docker compose up -d` from `./docker/crawler/`.
 
 Many crawlers can be launched simultaneously using `docker compose up -d` from `./docker/crawler/`. Set `CRAWLER_REPLICAS` in `./docker/crawler/.env` to choose the number of crawlers; it defaults to four and can be set to one when desired.
 
-With `REGISTRY_MODE=enforce`, the registry is the crawler's completion authority. The crawler considers every eligible source file by modification time, newest first, skips content already completed in the registry, and writes reports beneath `data/crawler/registry/` without changing legacy completion logs. This allows the routine midnight restart to process newly synced files first and then continue backward through uncrawled history. Registry claims also coordinate replicas and recover expired work after interruption, so enforced runs do not create `temp.txt` markers.
+The registry is always the crawler's completion authority. The crawler considers every eligible source file by modification time, newest first, skips content already completed in the registry, and writes reports beneath `data/crawler/registry/` without changing legacy completion logs. This allows the routine midnight restart to process newly synced files first and then continue backward through uncrawled history. Registry claims also coordinate replicas and recover expired work after interruption, so runs do not create `temp.txt` markers.
 
 Optionally limit any crawl with `CRAWL_DATE_FROM`, `CRAWL_DATE_TO`, and/or `CRAWL_PATH_PREFIX` relative to `DATA_DIR`. Date bounds are inclusive and use the `YYYYMMDD` crawl date at the end of each source filename. Omitting all filters selects every eligible source file. For example:
 

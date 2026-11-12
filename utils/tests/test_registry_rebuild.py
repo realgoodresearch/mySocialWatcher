@@ -255,35 +255,7 @@ class RegistryEndToEndTests(unittest.TestCase):
         return self.docker('exec', self.database, 'psql', '-X', '-v', 'ON_ERROR_STOP=1',
                            '-U', 'registry_test', '-d', 'registry_test', '-Atc', statement).stdout.strip()
 
-    def test_observe_mode_crawler_uses_actual_v2_routes_and_keeps_csv_log(self):
-        program = r'''
-import gzip
-from pathlib import Path
-from mysocialwatcher.crawler.utils import crawler
-root = Path('/work/data')
-source = root / 'collector/finished/dataframe_collected_finished_fixture.csv.gz'
-source.parent.mkdir(parents=True)
-source.write_bytes(gzip.compress(
-    b"publisher_platforms,timestamp,genders,ages_ranges,dau_audience,mau_audience,all_fields,targeting,response\n"
-    b"['facebook'],1722470400,0,\"{'min': 18, 'max': 65}\",100,200,\"{'geo_locations': {'name': 'countries', 'values': ['GB']}}\",{},\"{\"\"data\"\": [{\"\"estimate_ready\"\": true}]}\"\n"))
-crawler(str(root), 'registry-e2e-token', 'http://api:8001/socialwatcher/v2/write-batch',
-        api_mode='v2', registry_mode='observe', registry_url='http://api:8001/socialwatcher/v2',
-        crawler_instance='e2e-crawler')
-assert (root / 'crawler/collector/finished/dataframe_collected_finished_fixture_log.csv.gz').exists()
-'''
-        result = self.docker('run', '--rm', '--network', self.network, '--tmpfs', '/work',
-                             '-v', f'{ROOT}:/app:ro', '-w', '/app', 'crawler-crawler',
-                             'python', '-c', program, check=False)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertEqual(self.sql("SELECT bool_and(content_sha256 ~ '^[0-9a-f]{64}$') FROM crawler_files;"), 't',
-                         result.stdout + result.stderr + self.docker('logs', self.api).stdout
-                         + self.docker('logs', self.database).stdout)
-        self.assertEqual(self.sql("SELECT relative_path, attempt_mode, outcome, total_rows, rows_200, rows_409, "
-                                  "rows_inserted, rows_promoted, rows_unchanged, rows_rejected "
-                                  "FROM crawler_file_attempts WHERE relative_path LIKE 'collector/%';"),
-                         'collector/finished/dataframe_collected_finished_fixture.csv.gz|observe|completed|1|1|0|1|0|0|0')
-
-    def test_enforce_mode_claims_renews_finishes_and_skips_completed_content(self):
+    def test_crawler_claims_renews_finishes_and_skips_completed_content(self):
         program = r'''
 import gzip
 from pathlib import Path
@@ -295,8 +267,8 @@ source.write_bytes(gzip.compress(
     b"publisher_platforms,timestamp,genders,ages_ranges,dau_audience,mau_audience,all_fields,targeting,response\n"
     b"['facebook'],1722556800,0,\"{'min': 18, 'max': 65}\",100,200,\"{'geo_locations': {'name': 'countries', 'values': ['GB']}}\",{},\"{\"\"data\"\": [{\"\"estimate_ready\"\": true}]}\"\n"))
 args = dict(data_dir=str(root), token='registry-e2e-token',
-            url='http://api:8001/socialwatcher/v2/write-batch', api_mode='v2',
-            registry_mode='enforce', registry_url='http://api:8001/socialwatcher/v2',
+            url='http://api:8001/socialwatcher/v2/write-batch',
+            registry_url='http://api:8001/socialwatcher/v2',
             crawler_instance='e2e-enforcer', registry_lease_seconds=60,
             crawl_date_from='2024-01-01', crawl_date_to='2024-01-31',
             crawl_path_prefix='enforced/')

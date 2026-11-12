@@ -26,52 +26,11 @@ class CrawlerModeTests(unittest.TestCase):
             "action_api": "inserted", "message_api": "OK"
         }])
 
-    def test_v1_remains_default(self):
-        with patch("mysocialwatcher.crawler.utils.psw_to_sql", side_effect=self.response) as v1, \
-             patch("mysocialwatcher.crawler.utils.submit_dataframe_v2") as v2:
-            crawler(str(self.root), "token", "http://v1")
-        v1.assert_called_once()
-        v2.assert_not_called()
+    def test_registry_url_is_required(self):
+        with self.assertRaisesRegex(ValueError, "REGISTRY_URL is required"):
+            crawler(str(self.root), "token", "http://v2")
 
-    def test_v2_must_be_selected_explicitly(self):
-        with patch("mysocialwatcher.crawler.utils.psw_to_sql") as v1, \
-             patch("mysocialwatcher.crawler.utils.submit_dataframe_v2", side_effect=self.response) as v2:
-            crawler(str(self.root), "token", "http://v2", api_mode="v2", batch_size=25)
-        v1.assert_not_called()
-        self.assertEqual(v2.call_args.kwargs["batch_size"], 25)
-
-    def test_observe_mode_records_without_changing_v2_or_csv_skip(self):
-        class Observer:
-            def __init__(self, *args):
-                self.finished = []
-
-            def observe(self, data_dir, source, collection):
-                return {"decision": "observe", "attempt_id": 4, "attempt_token": "token"}
-
-            def finish(self, *args):
-                self.finished.append(args)
-
-        observer = Observer()
-        def respond_while_marker_exists(*args, **kwargs):
-            marker = (self.root / "crawler/host/collection/finished/"
-                      "dataframe_collected_finished_test_temp.txt")
-            self.assertTrue(marker.exists())
-            return self.response()
-
-        with patch("mysocialwatcher.crawler.utils.RegistryObserver", return_value=observer), \
-             patch("mysocialwatcher.crawler.utils.submit_dataframe_v2",
-                   side_effect=respond_while_marker_exists) as v2:
-            crawler(str(self.root), "token", "http://v2", api_mode="v2", registry_mode="observe",
-                    registry_url="http://registry/socialwatcher/v2", crawler_instance="test")
-        self.assertEqual(v2.call_count, 1)
-        self.assertEqual(len(observer.finished), 1)
-        self.assertTrue((self.root / "crawler/host/collection/finished/dataframe_collected_finished_test_log.csv.gz").exists())
-
-    def test_registry_requires_v2(self):
-        with self.assertRaisesRegex(ValueError, "requires API_MODE=v2"):
-            crawler(str(self.root), "token", "http://v1", registry_mode="observe", registry_url="http://registry")
-
-    def test_registry_mode_filters_by_filename_date_and_writes_separate_log(self):
+    def test_registry_filters_by_filename_date_and_writes_separate_log(self):
         selected = self.source.with_name(
             "dataframe_collected_finished_test_20240115.csv.gz")
         excluded = self.source.with_name(
@@ -91,8 +50,7 @@ class CrawlerModeTests(unittest.TestCase):
 
         with patch("mysocialwatcher.crawler.utils.RegistryObserver", return_value=Registry()), \
              patch("mysocialwatcher.crawler.utils.submit_dataframe_v2", side_effect=self.response) as v2:
-            crawler(str(self.root), "token", "http://v2", api_mode="v2",
-                    registry_mode="enforce", registry_url="http://registry",
+            crawler(str(self.root), "token", "http://v2", registry_url="http://registry",
                     crawl_date_from="2024-01-01",
                     crawl_date_to="2024-01-31", crawl_path_prefix="host/",
                     crawler_instance="test")
@@ -127,8 +85,7 @@ class CrawlerModeTests(unittest.TestCase):
         with patch("mysocialwatcher.crawler.utils.RegistryObserver", return_value=Registry()), \
              patch("mysocialwatcher.crawler.utils.submit_dataframe_v2",
                    side_effect=respond_without_marker) as v2:
-            crawler(str(self.root), "token", "http://v2", api_mode="v2",
-                    registry_mode="enforce", registry_url="http://registry",
+            crawler(str(self.root), "token", "http://v2", registry_url="http://registry",
                     crawl_date_from="2024-01-01", crawl_date_to="2024-01-31")
 
         self.assertEqual(v2.call_count, 1)
@@ -162,8 +119,7 @@ class CrawlerModeTests(unittest.TestCase):
                    side_effect=[requests.RequestException("temporary failure"),
                                 self.response()]) as v2:
             for _ in range(2):
-                crawler(str(self.root), "token", "http://v2", api_mode="v2",
-                        registry_mode="enforce", registry_url="http://registry",
+                crawler(str(self.root), "token", "http://v2", registry_url="http://registry",
                         crawl_date_from="2024-01-01", crawl_date_to="2024-01-31")
 
         marker = (self.root / "crawler/registry/host/collection/finished/"
@@ -195,8 +151,7 @@ class CrawlerModeTests(unittest.TestCase):
                    return_value=Registry()), \
              patch("mysocialwatcher.crawler.utils.submit_dataframe_v2",
                    side_effect=self.response) as v2:
-            crawler(str(self.root), "token", "http://v2", api_mode="v2",
-                    registry_mode="enforce", registry_url="http://registry")
+            crawler(str(self.root), "token", "http://v2", registry_url="http://registry")
 
         self.assertEqual(v2.call_count, 1)
         self.assertEqual(legacy_log.read_text(encoding="utf-8"), "legacy")

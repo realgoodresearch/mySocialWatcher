@@ -2,11 +2,14 @@
 
 API v2 is the production FastAPI service for batch ingestion and crawler file-registry operations. Flask API v1 remains available for existing read clients.
 
-Production documentation is available at:
+Documentation is currently available through the internal datahub route:
 
-- <https://api.realgoodresearch.com/socialwatcher/v2>
-- <https://api.realgoodresearch.com/socialwatcher/v2/docs>
-- OpenAPI schema: <https://api.realgoodresearch.com/socialwatcher/v2/openapi.json>
+- `http://serenity/socialwatcher/v2`
+- `http://serenity/socialwatcher/v2/docs`
+- OpenAPI schema: `http://serenity/socialwatcher/v2/openapi.json`
+
+Public routing through `api.realgoodresearch.com` is deferred until issue #10
+completes the remaining v2 API.
 
 All paths below are relative to `/socialwatcher/v2`.
 
@@ -92,10 +95,8 @@ The production crawler uses API v2 with registry enforcement. Its essential `.en
 ```dotenv
 DATA_DIR=data
 CRAWLER_REPLICAS=4
-API_MODE=v2
 API_URL=http://serenity/socialwatcher/v2/write-batch
 API_BATCH_SIZE=500
-REGISTRY_MODE=enforce
 REGISTRY_URL=http://serenity/socialwatcher/v2
 REGISTRY_LEASE_SECONDS=900
 CRAWLER_INSTANCE=daily-crawler
