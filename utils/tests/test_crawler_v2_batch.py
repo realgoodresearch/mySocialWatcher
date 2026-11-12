@@ -68,12 +68,15 @@ class BatchClientTests(unittest.TestCase):
 
     def test_successful_batch_creates_compatible_log_columns(self):
         session = FakeSession()
-        result = submit_dataframe_v2(frame(), "test", "token", "http://v2", session=session)
+        completed = []
+        result = submit_dataframe_v2(frame(), "test", "token", "http://v2", session=session,
+                                     batch_complete=lambda: completed.append(True))
         self.assertEqual(result.loc[0, "status_api"], 200)
         self.assertEqual(list(result.columns),
                          ["timestamp_api", "status_api", "action_api", "message_api"])
         self.assertEqual(result.loc[0, "action_api"], "inserted")
         self.assertEqual(session.requests[0][1]["json"]["rows"][0]["source_index"], 0)
+        self.assertEqual(completed, [True])
 
     def test_duplicate_result_is_written_as_409(self):
         class DuplicateResponse(FakeResponse):

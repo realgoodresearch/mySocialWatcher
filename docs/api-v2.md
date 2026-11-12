@@ -1,102 +1,220 @@
-# Social Watcher API v2 development guide
+# Social Watcher API v2
 
-API v2 is an independent FastAPI batch-ingestion service. It does not replace Flask v1. The development container binds only to `127.0.0.1:8001`, and its disposable PostgreSQL instance binds to `127.0.0.1:55432`.
+API v2 is the production FastAPI service for batch ingestion and crawler file-registry operations. Flask API v1 remains available for existing read clients.
 
-## Contract
+Documentation is currently available through the internal datahub route:
 
-`GET /socialwatcher/v2/health` checks process health without opening a database connection.
+- `http://serenity/socialwatcher/v2`
+- `http://serenity/socialwatcher/v2/docs`
+- OpenAPI schema: `http://serenity/socialwatcher/v2/openapi.json`
 
-`POST /socialwatcher/v2/write-batch` accepts an envelope containing one token, one collection name, and 1–1,000 normalized rows. Invalid rows are returned in `errors` by `source_index`; valid rows remain eligible for the same transaction. Authentication failures return 401, and database failures roll back the batch and return 503.
+Public routing through `api.realgoodresearch.com` is deferred until issue #10
+completes the remaining v2 API.
 
-The response reports aggregate `inserted`, `duplicates`, and `rejected` counts. It also returns one row-level result for every valid row: newly inserted rows receive status 200 and existing rows receive status 409. Validation failures remain status 400 in `errors`. Messages are concise and do not expose PostgreSQL error details. The crawler writes these statuses into its normal completion log, so a completed historical file can show whether it added data or consisted only of duplicates.
+All paths below are relative to `/socialwatcher/v2`.
 
-## Isolated development
+## Endpoints
 
-Start the disposable API and database:
+| Method and path | Purpose |
+| --- | --- |
+| `GET /health` | Process health without a database query |
+| `POST /write-batch` | Validate and write 1–1,000 normalized audience rows |
+| `POST /files/observe` | Record a non-authoritative file observation |
+| `POST /files/claim` | Claim logical file content for exclusive processing |
+| `POST /file-attempts/{id}/renew` | Renew an active enforced claim |
+| `POST /file-attempts/{id}/finish` | Record terminal file and row outcomes |
+
+The authenticated endpoints currently accept a `token` field in their JSON request. The token must have `write=true`; invalid and read-only tokens receive HTTP 401. Never place production tokens in source files, logs, issue comments, or command history.
+
+## Batch ingestion
+
+`POST /write-batch` accepts an envelope containing a token, collection name, and 1–1,000 normalized rows:
+
+```json
+{
+  "token": "...",
+  "collection": "example_collection",
+  "rows": [
+    {
+      "publisher_platforms": ["facebook"],
+      "timestamp": 1793491200,
+      "genders": 0,
+      "ages_ranges": {"min": 18, "max": 65},
+      "dau_audience": -1,
+      "mau_audience": 1000,
+      "all_fields": {
+        "geo_locations": {"name": "countries", "values": ["GB"]}
+      },
+      "targeting": {},
+      "response": {"data": [{"estimate_ready": true}]}
+    }
+  ]
+}
+```
+
+The API returns one terminal action for every source row:
+
+- `inserted`: a new database row was written;
+- `promoted`: an existing original row was updated with refined estimates;
+- `unchanged`: the preferred row was already present;
+- `rejected`: the source row failed API validation.
+
+Valid rows in a mixed batch remain eligible when other rows are rejected. Authentication failures return 401, request-schema failures return 422, and database failures roll back the batch and return 503.
+
+Meta stopped returning DAU estimates on 2026-10-27. Omitted DAU is therefore normalized to the valid `-1` sentinel. The original Meta response JSON is preserved exactly. At least one MAU value or bound is still required. Rows explicitly marked `estimate_ready=false` are rejected; responses without that field remain subject to the other validity checks.
+
+Refined rows are identified by the `better_estimates` marker stored in `all_fields`. When an original row already occupies the unique identity, API v2 promotes its MAU values and marker in place and sets `updated_on`. `contributed_on` continues to identify the original insertion time.
+
+## File registry
+
+The registry identifies logical source content using the SHA-256 digest and size of the decompressed CSV bytes. It also retains the compressed archive digest, archive size, relative path, collection, crawler identity, contributor, attempts, leases, outcomes, and row counts.
+
+Identical decompressed content is authoritative even if its path or gzip representation changes. Relative paths must remain beneath `DATA_DIR` and may not contain traversal components.
+
+### Claim lifecycle
+
+`POST /files/claim` returns one of:
+
+- `process`: new logical content was claimed;
+- `retry`: a failed or expired attempt was reclaimed;
+- `in_progress`: another crawler owns a live lease;
+- `already_completed`: an enforced attempt already completed the content.
+
+Only `process` and `retry` return an attempt ID, secret attempt token, and lease expiry. The crawler renews the lease between ingestion batches. Completion requires the authenticated owner, attempt secret, a terminal outcome, and row counts that reconcile to the source total.
+
+Completed and completed-with-rejections attempts are authoritative. Failed, corrupt, abandoned, and expired work remains retryable. Registry observations are diagnostic and never block or satisfy an enforced claim.
+
+### Registry database schema
+
+`crawler_files` stores logical content identities. `crawler_file_attempts` stores each observation or enforced processing attempt. Database functions serialize claims, renew leases, validate ownership, and enforce terminal count invariants. Only the PostgreSQL writer role can mutate registry state.
+
+## Production crawler workflow
+
+The production crawler uses API v2 with registry enforcement. Its essential `.env` settings are:
+
+```dotenv
+DATA_DIR=data
+CRAWLER_REPLICAS=4
+API_URL=http://serenity/socialwatcher/v2/write-batch
+API_BATCH_SIZE=500
+REGISTRY_URL=http://serenity/socialwatcher/v2
+REGISTRY_LEASE_SECONDS=900
+CRAWLER_INSTANCE=daily-crawler
+```
+
+The crawler discovers eligible `finished/dataframe_collected_finished_*.csv.gz` files, sorts them by modification time newest first, and asks the registry whether each content identity requires processing. Existing legacy crawler logs do not prevent an enforced claim. New durable row reports are written beneath `data/crawler/registry/`; legacy logs remain unchanged.
+
+Enforced claims coordinate replicas, so registry-based crawls do not use `temp.txt` claim markers. A restart safely skips completed content and retries interrupted work after its lease expires.
+
+### Optional selection filters
+
+Date bounds use the `YYYYMMDD` suffix in source filenames and are inclusive:
+
+```dotenv
+CRAWL_DATE_FROM=2026-10-01
+CRAWL_DATE_TO=2026-10-31
+# CRAWL_PATH_PREFIX=serenity/migration_asia_pacific/
+```
+
+Omit `CRAWL_DATE_TO` for an open upper bound. Do not assign it an empty value; an empty string is not a valid ISO date. Omit all filters to consider every eligible source file.
+
+### Daily operation
+
+From the repository root, synchronize source data and restart the standard replicas with:
+
+```bash
+./utils/daily_crawl.sh ./
+```
+
+When source data are already current, use:
+
+```bash
+./utils/daily_crawl_nosync.sh ./
+```
+
+The production cron job runs the synchronized workflow at midnight. It stops the standard crawler project, synchronizes incoming files, removes stale legacy markers, and restarts the replicas. Newly synchronized files are considered first; registry-completed content is skipped before the crawler continues through older files.
+
+## Database migrations
+
+Schema history lives in `docker/datahub/migrations/*.sql`. `initdb.sh` creates the reader and writer roles for a new database and invokes `docker/datahub/migrate.sh`. Existing PostgreSQL data directories do not run migrations automatically when an API container starts.
+
+Run pending migrations explicitly as the schema owner:
+
+```bash
+bash docker/datahub/migrate.sh
+```
+
+An installation predating the migration ledger requires one explicit adoption:
+
+```bash
+bash docker/datahub/migrate.sh --baseline-legacy
+```
+
+The migration runner uses a transaction and advisory lock, records SHA-256 checksums, skips applied versions, and rejects edits to applied migrations. Add a new numbered migration instead of changing a migration already recorded in production.
+
+## Deployment
+
+API v2 is the `datahub_api_v2` service in the datahub Compose stack. It shares the datahub network, connects to the production database through the writer role, and binds port 8001 only on localhost. Nginx proxies `/socialwatcher/v2` to that service.
+
+Build and recreate only API v2 so the production database and v1 services are not restarted:
+
+```bash
+docker compose -f docker/datahub/docker-compose.yml \
+  up -d --build --no-deps datahub_api_v2
+```
+
+Verify the direct and proxied routes:
+
+```bash
+curl --fail http://127.0.0.1:8001/socialwatcher/v2/health
+curl --fail http://serenity/socialwatcher/v2/health
+curl --fail --location http://serenity/socialwatcher/v2
+```
+
+Recreating API v2 can change its container address. If nginx retains the old upstream address, validate and reload it:
+
+```bash
+docker exec datahub_web nginx -t
+docker exec datahub_web nginx -s reload
+```
+
+Avoid recreating API v2 during an active crawl; a brief proxy failure creates retryable registry attempts and unnecessary ingestion delay.
+
+## Isolated development and tests
+
+Start the disposable API and PostgreSQL environment:
 
 ```bash
 docker compose -p socialwatcher_v2_test \
   -f docker/api_v2/docker-compose.test.yml up -d --build --wait
 ```
 
-The Compose project has its own network and volume. It does not join the production network or use production credentials.
-
-Remove all test resources afterward:
+Remove it afterward:
 
 ```bash
 docker compose -p socialwatcher_v2_test \
   -f docker/api_v2/docker-compose.test.yml down --volumes --remove-orphans
 ```
 
-## Standalone file client
-
-Parse a source file without sending or writing anything:
+The full registry schema rebuild test creates only a unique disposable PostgreSQL container:
 
 ```bash
-python3 utils/v2_batch_file.py SOURCE.csv.gz --collection COLLECTION
+RUN_REGISTRY_REBUILD_TEST=1 \
+  python3 -m unittest utils.tests.test_registry_rebuild -v
 ```
 
-Sending requires `API_TOKEN`, `--send`, and a new explicit output path. It never writes into `data/crawler` automatically:
+The API/crawler end-to-end test uses an isolated Docker network, disposable PostgreSQL, and no production ports or credentials:
 
 ```bash
-API_TOKEN=... python3 utils/v2_batch_file.py SOURCE.csv.gz \
-  --collection COLLECTION \
-  --url http://127.0.0.1:8001/socialwatcher/v2/write-batch \
-  --output /tmp/v2-test-log.csv.gz --send
+RUN_REGISTRY_E2E_TEST=1 \
+  python3 -m unittest \
+  utils.tests.test_registry_rebuild.RegistryEndToEndTests -v
 ```
 
-## Crawler selection
+## Recovery and legacy crawler
 
-The existing crawler remains on v1 when `API_MODE` is absent:
+The registry is the production completion authority. Deleting a CSV report does not make completed content eligible again. Preserve registry records and diagnostic reports during routine cleanup.
 
-```text
-API_MODE=v1
-```
+The unchanged pre-registry crawler is archived in Git tag `legacy-crawler-pre-registry`. Use that tag only for deliberate legacy recovery work; production uses the registry-based crawler.
 
-V2 requires all three explicit settings:
-
-```text
-API_MODE=v2
-API_URL=http://HOST:8001/socialwatcher/v2/write-batch
-API_BATCH_SIZE=500
-```
-
-The crawler image supports both API versions; switching versions only requires changing these environment settings and recreating the crawler containers.
-
-## Benchmark results
-
-The isolated test ran 10,000 synthetic rows with batches of 500:
-
-| Workload | Throughput |
-|---|---:|
-| One client, new rows | 4,899 rows/s |
-| Four clients, new rows | 5,550 rows/s |
-| Four clients, all duplicates | 5,662 rows/s |
-
-An idle post-benchmark snapshot showed approximately 102 MiB for the API container and 87 MiB for PostgreSQL. These measurements use the minimal test schema on this server and are capacity indicators, not production guarantees.
-
-A recent 3,822-row source file completed end to end with 3,822 accepted rows in the disposable database. A separate 399-row file with an existing all-200 v1 log parsed into 399 v2 rows without client errors.
-
-The complete crawler lifecycle was also exercised against copied data. A restart skipped an existing completion log, and deleting only the copied log replayed the source without increasing database counts. In a synchronized test, four crawler containers each atomically claimed a different 3,822-row file; all four logs were complete and no temporary or error markers remained. Two other files produced the same 6 and 10 missing-audience 400s recorded by their existing v1 logs.
-
-## Future deployment and rollback
-
-Deployment requires a new v2 container on port 8001 and an explicit database URL. It does not require a database migration. Reverse-proxy routing and live crawler settings are separate production changes and are intentionally absent from this branch's development workflow.
-
-The v2 service is part of the existing datahub Compose stack. Build and start that service explicitly so Compose does not recreate the running v1 services:
-
-```bash
-docker compose -f docker/datahub/docker-compose.yml up -d --build --wait --no-deps datahub_api_v2
-curl --fail http://127.0.0.1:8001/socialwatcher/v2/health
-```
-
-It reads the existing database environment, shares the datahub network, and binds port 8001 only on localhost. Nginx routes `/socialwatcher/v2/` to this service.
-
-Rollback is to set crawlers back to `API_MODE=v1` with the v1 URL, then stop the v2 container. V1 data and completion logs remain compatible because v2 writes to the existing tables and emits the same three crawler log columns.
-
-Before any crawler has been switched, rollback consists only of removing v2:
-
-```bash
-docker compose -f docker/datahub/docker-compose.yml stop datahub_api_v2
-docker compose -f docker/datahub/docker-compose.yml rm -f datahub_api_v2
-```
+API v1 remains available for existing read clients. Removal or redirection of v1 is outside the registry rollout and requires a separate migration decision.
