@@ -40,6 +40,10 @@ class RegistryWriter:
                 "attempt_token": "e0f63a70-2216-45ce-9c23-0f425d5972e0",
                 "lease_expires_at": None if mode == "observe" else "2026-01-01T00:00:00+00:00"}
 
+    def preflight(self, request):
+        self.calls.append(("preflight", request))
+        return [request.files[0].relative_path]
+
     def renew(self, attempt_id, request):
         self.calls.append(("renew", attempt_id, request))
         return "2026-01-01T00:00:00+00:00"
@@ -94,8 +98,16 @@ class RouteTests(unittest.TestCase):
             "collection": "collector", "crawler_instance": "crawler-1", "request_id": request_id,
         }
         client = TestClient(app)
+        preflight = client.post("/socialwatcher/v2/files/preflight", json={
+            "token": "registry-secret", "files": [{
+                "relative_path": "collector/file.csv.gz", "archive_size": 123,
+                "archive_mtime_ns": 1700000000000000000,
+            }],
+        })
         observe = client.post("/socialwatcher/v2/files/observe", json=body)
         claim = client.post("/socialwatcher/v2/files/claim", json=body)
+        self.assertEqual((preflight.status_code, preflight.json()["completed_paths"]),
+                         (200, ["collector/file.csv.gz"]))
         self.assertEqual((observe.status_code, observe.json()["decision"]), (200, "observe"))
         self.assertEqual((claim.status_code, claim.json()["decision"]), (200, "process"))
         secret = observe.json()["attempt_token"]
@@ -108,7 +120,8 @@ class RouteTests(unittest.TestCase):
         })
         self.assertEqual(renew.status_code, 200)
         self.assertEqual(finish.status_code, 204)
-        self.assertEqual([call[0] for call in writer.calls], ["start", "start", "renew", "finish"])
+        self.assertEqual([call[0] for call in writer.calls],
+                         ["preflight", "start", "start", "renew", "finish"])
 
     def test_validation_error_does_not_echo_token_or_request_values(self):
         secret = "never-echo-this-token"

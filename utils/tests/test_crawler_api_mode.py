@@ -30,6 +30,22 @@ class CrawlerModeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "REGISTRY_URL is required"):
             crawler(str(self.root), "token", "http://v2")
 
+    def test_completed_unchanged_path_skips_hash_and_claim(self):
+        class Registry:
+            def preflight(self, data_dir, sources):
+                source = sources[0]
+                stat = source.stat()
+                return {source: (stat.st_size, stat.st_mtime_ns)}
+
+            def claim(self, *args):
+                raise AssertionError("completed unchanged file must not be hashed or claimed")
+
+        with patch("mysocialwatcher.crawler.utils.RegistryObserver", return_value=Registry()), \
+             patch("mysocialwatcher.crawler.utils.submit_dataframe_v2") as submit:
+            crawler(str(self.root), "token", "http://v2", registry_url="http://registry")
+
+        submit.assert_not_called()
+
     def test_registry_filters_by_filename_date_and_writes_separate_log(self):
         selected = self.source.with_name(
             "dataframe_collected_finished_test_20240115.csv.gz")
@@ -39,6 +55,9 @@ class CrawlerModeTests(unittest.TestCase):
         pd.DataFrame([{"value": 2}]).to_csv(excluded, index=False)
 
         class Registry:
+            def preflight(self, *args):
+                return {}
+
             def claim(self, *args):
                 return {"decision": "process", "attempt_id": 5, "attempt_token": "token"}
 
@@ -69,6 +88,9 @@ class CrawlerModeTests(unittest.TestCase):
         marker.write_text("stale", encoding="utf-8")
 
         class Registry:
+            def preflight(self, *args):
+                return {}
+
             def claim(self, *args):
                 return {"decision": "process", "attempt_id": 5, "attempt_token": "token"}
 
@@ -100,6 +122,9 @@ class CrawlerModeTests(unittest.TestCase):
             def __init__(self):
                 self.claims = 0
                 self.finished = []
+
+            def preflight(self, *args):
+                return {}
 
             def claim(self, *args):
                 self.claims += 1
@@ -137,6 +162,9 @@ class CrawlerModeTests(unittest.TestCase):
         legacy_log.write_text("legacy", encoding="utf-8")
 
         class Registry:
+            def preflight(self, *args):
+                return {}
+
             def claim(self, *args):
                 return {"decision": "process", "attempt_id": 5,
                         "attempt_token": "token"}

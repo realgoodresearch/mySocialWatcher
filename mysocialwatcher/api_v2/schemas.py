@@ -63,6 +63,21 @@ class RegistryStartResponse(BaseModel):
     lease_expires_at: str | None
 
 
+class RegistryPreflightFile(BaseModel):
+    relative_path: str = Field(min_length=1, max_length=4096)
+    archive_size: int = Field(ge=0)
+    archive_mtime_ns: int = Field(ge=0)
+
+
+class RegistryPreflightRequest(BaseModel):
+    token: str = Field(min_length=1)
+    files: list[RegistryPreflightFile] = Field(min_length=1, max_length=1000)
+
+
+class RegistryPreflightResponse(BaseModel):
+    completed_paths: list[str]
+
+
 class LeaseRenewRequest(BaseModel):
     token: str = Field(min_length=1)
     attempt_token: UUID

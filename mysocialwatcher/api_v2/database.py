@@ -287,6 +287,36 @@ class RegistryWriter:
         except (OperationalError, SQLAlchemyError) as exc:
             raise DatabaseWriteError("registry start failed") from exc
 
+    def preflight(self, request) -> list[str]:
+        try:
+            with self.engine.begin() as connection:
+                contributor_id = self._contributor(connection, request.token)
+                rows = connection.execute(text("""
+                    SELECT candidate.relative_path
+                    FROM jsonb_to_recordset(CAST(:files AS jsonb)) AS candidate(
+                        relative_path text, archive_size bigint, archive_mtime_ns bigint
+                    )
+                    WHERE EXISTS (
+                        SELECT 1
+                        FROM crawler_file_attempts AS attempt
+                        WHERE attempt.contributor_id = :contributor_id
+                          AND attempt.attempt_mode = 'enforce'
+                          AND attempt.outcome IN ('completed', 'completed_with_rejections')
+                          AND attempt.relative_path = candidate.relative_path
+                          AND attempt.archive_size = candidate.archive_size
+                          AND attempt.finished_at >= to_timestamp(
+                              candidate.archive_mtime_ns / 1000000000.0)
+                    )
+                """), {
+                    "contributor_id": contributor_id,
+                    "files": json.dumps([file.model_dump() for file in request.files]),
+                }).scalars().all()
+                return list(rows)
+        except AuthenticationError:
+            raise
+        except (OperationalError, SQLAlchemyError) as exc:
+            raise DatabaseWriteError("registry preflight failed") from exc
+
     def renew(self, attempt_id: int, request) -> str:
         try:
             with self.engine.begin() as connection:
