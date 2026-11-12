@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import json
-from collections import defaultdict, deque
+from collections import defaultdict
 from collections.abc import Sequence
 
 from sqlalchemy import (
@@ -10,13 +10,19 @@ from sqlalchemy import (
     Boolean,
     Column,
     Date,
+    DateTime,
     Integer,
     MetaData,
     SmallInteger,
     String,
     Table,
+    Text,
+    cast,
     create_engine,
+    false,
+    func,
     select,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, insert
 from sqlalchemy.engine import Engine, URL
@@ -30,6 +36,10 @@ class AuthenticationError(Exception):
 
 
 class DatabaseWriteError(Exception):
+    pass
+
+
+class AttemptConflictError(Exception):
     pass
 
 
@@ -55,6 +65,7 @@ def audience_table(name: str) -> Table:
         metadata,
         Column("collection_id", Integer),
         Column("contributor_id", Integer),
+        Column("updated_on", DateTime(timezone=True)),
         Column("collection_date", Date, nullable=False),
         Column("country", String(2), nullable=False),
         Column("gender", SmallInteger, nullable=False),
@@ -109,7 +120,8 @@ class BatchWriter:
     def __init__(self, engine: Engine):
         self.engine = engine
 
-    def write(self, token: str, collection: str, rows: Sequence[NormalizedRow]) -> set[int]:
+    def write(self, token: str, collection: str,
+              rows: Sequence[NormalizedRow]) -> dict[int, str]:
         try:
             with self.engine.begin() as connection:
                 contributor_id = connection.execute(
@@ -142,29 +154,171 @@ class BatchWriter:
                     values.update(collection_id=collection_id, contributor_id=contributor_id)
                     grouped[row.table].append((row, values))
 
-                inserted_indices: set[int] = set()
+                actions: dict[int, str] = {}
                 identity_columns = (
                     "country", "collection_date", "gender", "age_min", "age_max", "dau",
                     "geo_locations", "targeting", "response",
                 )
                 for table_name, items in grouped.items():
                     table = AUDIENCE_TABLES[table_name]
-                    pending: dict[tuple, deque[int]] = defaultdict(deque)
+                    selected: dict[tuple, tuple[NormalizedRow, dict]] = {}
                     for row, values in items:
-                        pending[_row_identity(values)].append(row.source_index)
-                    result = connection.execute(
-                        insert(table)
-                        .values([values for _, values in items])
-                        .on_conflict_do_nothing()
+                        identity = _row_identity(values)
+                        current = selected.get(identity)
+                        if current is None or (_is_refined(values) and not _is_refined(current[1])):
+                            selected[identity] = (row, values)
+                    source_by_identity = {
+                        identity: row.source_index
+                        for identity, (row, _) in selected.items()
+                    }
+                    index_elements = [
+                        table.c.country, table.c.collection_date, table.c.gender,
+                        table.c.age_min, table.c.age_max, table.c.dau,
+                        func.md5(cast(table.c.geo_locations, Text)),
+                        func.md5(cast(table.c.targeting, Text)),
+                        func.md5(cast(table.c.response, Text)),
+                    ]
+                    statement = insert(table).values(
+                        [values for _, values in selected.values()]
+                    )
+                    inserted = connection.execute(
+                        statement.on_conflict_do_nothing(index_elements=index_elements)
                         .returning(*(table.c[name] for name in identity_columns))
                     )
-                    for inserted in result.mappings():
-                        inserted_indices.add(pending[_row_identity(inserted)].popleft())
-                return inserted_indices
+                    inserted_identities = set()
+                    for written in inserted.mappings():
+                        identity = _row_identity(written)
+                        inserted_identities.add(identity)
+                        actions[source_by_identity[identity]] = "inserted"
+
+                    promotion_values = [
+                        values for identity, (_, values) in selected.items()
+                        if identity not in inserted_identities and _is_refined(values)
+                    ]
+                    if not promotion_values:
+                        continue
+                    statement = insert(table).values(promotion_values)
+                    refinement_marker = {"better_estimates": True}
+                    promoted = connection.execute(
+                        statement.on_conflict_do_update(
+                            index_elements=index_elements,
+                            set_={
+                                "mau": statement.excluded.mau,
+                                "mau_lower": statement.excluded.mau_lower,
+                                "mau_upper": statement.excluded.mau_upper,
+                                "all_fields": statement.excluded.all_fields,
+                                "updated_on": func.current_timestamp(),
+                            },
+                            where=(
+                                statement.excluded.all_fields.contains(refinement_marker)
+                                & ~func.coalesce(
+                                    table.c.all_fields.contains(refinement_marker), false()
+                                )
+                            ),
+                        )
+                        .returning(*(table.c[name] for name in identity_columns))
+                    )
+                    for written in promoted.mappings():
+                        actions[source_by_identity[_row_identity(written)]] = "promoted"
+                return actions
         except AuthenticationError:
             raise
         except (OperationalError, SQLAlchemyError) as exc:
             raise DatabaseWriteError("database batch write failed") from exc
+
+
+class RegistryWriter:
+    """Database adapter for API v2 registry functions; CSV-log behavior is elsewhere."""
+    def __init__(self, engine: Engine):
+        self.engine = engine
+
+    def _contributor(self, connection, token: str) -> int:
+        contributor_id = connection.execute(
+            select(tokens.c.contributor_id).where(tokens.c.token == token, tokens.c.write.is_(True))
+        ).scalar_one_or_none()
+        if contributor_id is None:
+            raise AuthenticationError("token is not authorized for writes")
+        return contributor_id
+
+    @staticmethod
+    def _start_result(row):
+        return {
+            "decision": row.decision,
+            "attempt_id": row.attempt_id,
+            "attempt_token": row.attempt_token,
+            "lease_expires_at": row.lease_expires_at.isoformat() if row.lease_expires_at else None,
+        }
+
+    def start(self, mode: str, request) -> dict:
+        function = "crawler_observe_v2" if mode == "observe" else "crawler_claim_v2"
+        try:
+            with self.engine.begin() as connection:
+                contributor_id = self._contributor(connection, request.token)
+                params = request.model_dump()
+                params["p_hash"] = params.pop("content_sha256")
+                params["p_path"] = params.pop("relative_path")
+                params["p_size"] = params.pop("uncompressed_size")
+                params["p_collection"] = params.pop("collection")
+                params["p_instance"] = params.pop("crawler_instance")
+                params["p_request_id"] = params.pop("request_id")
+                params["p_archive_hash"] = params.pop("archive_sha256")
+                params["p_archive_size"] = params.pop("archive_size")
+                params["p_contributor_id"] = contributor_id
+                params.pop("token")
+                if mode == "observe":
+                    params.pop("lease_seconds")
+                    statement = text(f"""SELECT * FROM {function}(
+                        CAST(:p_hash AS text), CAST(:p_path AS text), CAST(:p_size AS bigint),
+                        CAST(:p_collection AS text), CAST(:p_instance AS text),
+                        CAST(:p_contributor_id AS integer), CAST(:p_request_id AS uuid),
+                        CAST(:p_archive_hash AS text), CAST(:p_archive_size AS bigint))""")
+                else:
+                    params["p_lease_seconds"] = params.pop("lease_seconds")
+                    statement = text(f"""SELECT * FROM {function}(
+                        CAST(:p_hash AS text), CAST(:p_path AS text), CAST(:p_size AS bigint),
+                        CAST(:p_collection AS text), CAST(:p_instance AS text),
+                        CAST(:p_contributor_id AS integer), CAST(:p_request_id AS uuid),
+                        CAST(:p_lease_seconds AS integer), CAST(:p_archive_hash AS text),
+                        CAST(:p_archive_size AS bigint))""")
+                row = connection.execute(statement, params).mappings().one()
+                return self._start_result(row)
+        except AuthenticationError:
+            raise
+        except (OperationalError, SQLAlchemyError) as exc:
+            raise DatabaseWriteError("registry start failed") from exc
+
+    def renew(self, attempt_id: int, request) -> str:
+        try:
+            with self.engine.begin() as connection:
+                contributor_id = self._contributor(connection, request.token)
+                expires = connection.execute(text("SELECT crawler_renew_v2(:id, :token, :owner, :seconds)"), {
+                    "id": attempt_id, "token": request.attempt_token, "owner": contributor_id,
+                    "seconds": request.lease_seconds,
+                }).scalar_one()
+                if expires is None:
+                    raise AttemptConflictError("attempt cannot be renewed")
+                return expires.isoformat()
+        except (AuthenticationError, AttemptConflictError):
+            raise
+        except (OperationalError, SQLAlchemyError) as exc:
+            raise DatabaseWriteError("registry lease renewal failed") from exc
+
+    def finish(self, attempt_id: int, request) -> None:
+        try:
+            with self.engine.begin() as connection:
+                contributor_id = self._contributor(connection, request.token)
+                values = request.model_dump(exclude={"token", "attempt_token"})
+                values.update(id=attempt_id, token=request.attempt_token, owner=contributor_id)
+                result = connection.execute(text("""SELECT crawler_finish_v2(
+                    :id, :token, :owner, :outcome, :total_rows, :rows_200, :rows_409, :rows_400,
+                    :rows_401, :rows_5xx, :rows_other, :corrupt_rows, :error_summary,
+                    :rows_inserted, :rows_promoted, :rows_unchanged, :rows_rejected)"""), values).scalar_one()
+                if not result:
+                    raise AttemptConflictError("attempt cannot be completed")
+        except (AuthenticationError, AttemptConflictError):
+            raise
+        except (OperationalError, SQLAlchemyError) as exc:
+            raise DatabaseWriteError("registry completion failed") from exc
 
 
 def _row_identity(values) -> tuple:
@@ -177,3 +331,7 @@ def _row_identity(values) -> tuple:
         canonical(values["geo_locations"]), canonical(values.get("targeting") or {}),
         canonical(values["response"]),
     )
+
+
+def _is_refined(values) -> bool:
+    return values.get("all_fields", {}).get("better_estimates") is True

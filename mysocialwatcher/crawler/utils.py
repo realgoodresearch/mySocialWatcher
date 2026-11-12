@@ -5,11 +5,45 @@ import math
 import numpy
 import datetime
 import warnings
+import re
+from pathlib import Path
 from time import sleep
 import pandas as pd
 from ast import literal_eval
 
-from mysocialwatcher.crawler.batch import submit_dataframe_v2
+from mysocialwatcher.crawler.batch import mark_better_estimates, submit_dataframe_v2
+from mysocialwatcher.crawler.registry import RegistryError, RegistryObserver
+
+
+CRAWL_DATE_PATTERN = re.compile(r"_(\d{8})(?:_betterestimate)?\.csv\.gz$")
+
+
+def crawl_date_from_filename(path):
+    match = CRAWL_DATE_PATTERN.search(os.path.basename(path))
+    if not match:
+        return None
+    try:
+        return datetime.datetime.strptime(match.group(1), "%Y%m%d").date()
+    except ValueError:
+        return None
+
+
+def parse_crawl_date_bound(value, name):
+    if value is None or isinstance(value, datetime.date):
+        return value
+    try:
+        return datetime.date.fromisoformat(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must use YYYY-MM-DD") from exc
+
+
+def normalize_path_prefix(value):
+    if not value:
+        return None
+    path = Path(value)
+    if path.is_absolute() or '..' in path.parts:
+        raise ValueError("CRAWL_PATH_PREFIX must be relative to DATA_DIR")
+    return path.as_posix().strip('/') + '/'
 
 
 def safe_http_error_message(exc, response=None):
@@ -160,7 +194,7 @@ def psw_to_sql(df, collection_name, token,
         except Exception as e:
             message = safe_http_error_message(e, http_response)
             warnings.warn(message)
-            
+
             response_timestamp[index] = str(datetime.datetime.now())
             response_status[index] = 500
             response_message[index] = message
@@ -190,8 +224,11 @@ def governor(func, hours=1):
     return wrapper
 
 
-def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
-            api_mode='v1', batch_size=500):
+def crawler(data_dir, token,
+            url='http://127.0.0.1:8001/socialwatcher/v2/write-batch',
+            batch_size=500, registry_url=None,
+            crawler_instance='crawler', registry_lease_seconds=900,
+            crawl_date_from=None, crawl_date_to=None, crawl_path_prefix=None):
     # crawl_dir = 'data/_test'
 
     print('-----------------------------')
@@ -200,8 +237,16 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
     data_dir = os.path.abspath(data_dir.rstrip('/'))
     crawl_dir = os.path.join(data_dir, 'crawler')
     os.makedirs(crawl_dir, exist_ok=True)
-    if api_mode not in {'v1', 'v2'}:
-        raise ValueError("API_MODE must be 'v1' or 'v2'")
+    if not registry_url:
+        raise ValueError("REGISTRY_URL is required")
+    if not 1 <= registry_lease_seconds <= 86400:
+        raise ValueError("REGISTRY_LEASE_SECONDS must be between 1 and 86400")
+    date_from = parse_crawl_date_bound(crawl_date_from, 'CRAWL_DATE_FROM')
+    date_to = parse_crawl_date_bound(crawl_date_to, 'CRAWL_DATE_TO')
+    if date_from and date_to and date_from > date_to:
+        raise ValueError("CRAWL_DATE_FROM must not be after CRAWL_DATE_TO")
+    path_prefix = normalize_path_prefix(crawl_path_prefix)
+    registry = RegistryObserver(registry_url, token, crawler_instance)
 
     # file list
     file_list = []
@@ -211,6 +256,14 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
         for f in file:
             full_path = os.path.join(root, f)
             if "finished/dataframe_collected_finished_" in full_path:
+                relative = Path(full_path).relative_to(data_dir).as_posix()
+                if path_prefix and not relative.startswith(path_prefix):
+                    continue
+                crawl_date = crawl_date_from_filename(full_path)
+                if date_from and (crawl_date is None or crawl_date < date_from):
+                    continue
+                if date_to and (crawl_date is None or crawl_date > date_to):
+                    continue
                 file_list.append(full_path)
     
     # Sort by modification time, most recent first
@@ -221,60 +274,92 @@ def crawler(data_dir, token, url='http://127.0.0.1/api/v1/write',
         # file = file_list[0]
         # file = 'C:/Users/edithd/Documents/mySocialWatcher/data/saffron/ukraine_admin2_tessellation/finished/dataframe_collected_finished_1_facebook_all_admin2_20240328.csv'
 
-        out_path = file.replace(data_dir, crawl_dir).replace('.csv.gz', '_log.csv.gz')
+        # The registry is the completion authority. Keep its reports separate so
+        # legacy completion logs remain unchanged.
+        log_root = os.path.join(crawl_dir, 'registry')
+        out_path = file.replace(data_dir, log_root).replace('.csv.gz', '_log.csv.gz')
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         temp_path = out_path.replace('log.csv.gz', 'temp.txt')
         error_path = out_path.replace('log.csv.gz', 'error.txt')
+        checkpoint_path = out_path.replace('_log.csv.gz', '_partial_log.csv.gz')
+        print('[' + str(datetime.datetime.now()) + '] ' + file)
 
-        if not os.path.exists(out_path) and not os.path.exists(temp_path) and not os.path.exists(error_path):
-            # Atomically claim the file: only one replica may create the marker.
-            try:
-                with open(temp_path, "x") as f:
-                    f.write('[' + str(datetime.datetime.now()) + '] Begin processing data...' + '\n')
-            except FileExistsError:
-                continue
+        attempt = None
+        collection_name = file.split('/')[-3].lstrip('_')
+        try:
+            attempt = registry.claim(Path(data_dir), Path(file), collection_name,
+                                     registry_lease_seconds)
+        except RegistryError as registry_error:
+            warnings.warn(str(registry_error))
+            continue
+        if attempt['decision'] in {'already_completed', 'in_progress'}:
+            continue
+        if os.path.exists(temp_path):
+            # A successful database claim supersedes a stale legacy marker.
+            os.remove(temp_path)
 
-            # Another replica may have finished after our initial checks.
-            if os.path.exists(out_path) or os.path.exists(error_path):
-                os.remove(temp_path)
-                continue
+        try:
+            # load data
+            df = pd.read_csv(file)
 
-            print('[' + str(datetime.datetime.now()) + '] ' + file)
+            if "_betterestimate.csv" in os.path.basename(file):
+                df = mark_better_estimates(df)
 
-            try:
-                # load data
-                df = pd.read_csv(file)
+            registry.renew(attempt, registry_lease_seconds)
 
-                collection_name = file.split('/')[-3].lstrip('_')
+            # write collection to SQL via API
+            response = submit_dataframe_v2(
+                dataframe=df,
+                collection=collection_name,
+                url=url,
+                token=token,
+                batch_size=batch_size,
+                checkpoint_path=Path(checkpoint_path),
+                batch_complete=lambda: registry.renew(attempt, registry_lease_seconds))
 
-                # write collection to SQL via API
-                if api_mode == 'v2':
-                    response = submit_dataframe_v2(
-                        dataframe=df,
-                        collection=collection_name,
-                        url=url,
-                        token=token,
-                        batch_size=batch_size)
-                else:
-                    response = psw_to_sql(
-                        df=df,
-                        collection_name=collection_name,
-                        url=url,
-                        token=token,
-                        valid=True)
+            if attempt:
+                status_counts = response['status_api'].value_counts().astype(int).to_dict()
+                action_counts = response['action_api'].value_counts().astype(int).to_dict()
+                complete = (len(response) == len(df)
+                            and sum(action_counts.values()) == len(df)
+                            and set(action_counts).issubset(
+                                {'inserted', 'promoted', 'unchanged', 'rejected'}))
+                outcome = ('completed_with_rejections'
+                           if complete and action_counts.get('rejected', 0)
+                           else 'completed' if complete else 'failed')
+                try:
+                    registry.finish(attempt, outcome, len(df), status_counts,
+                                    action_counts,
+                                    None if complete else 'non-terminal row outcomes')
+                except RegistryError:
+                    raise
 
-                # save API responses
-                response.to_csv(out_path)
-                
-                with open(temp_path, "a") as f:
-                    f.write('[' + str(datetime.datetime.now()) + '] Completed' + '\n')
-                
-            except Exception as e:
-                with open(temp_path, "a") as f:
-                    f.write('[' + str(datetime.datetime.now()) + ']  Exception: \n' + str(e) + '\n')
-                os.rename(temp_path, error_path)
-            
-            else:
-                os.remove(temp_path)
+            # Publish the durable CSV log only after an enforced attempt is finished.
+            response.to_csv(out_path)
+            if os.path.exists(checkpoint_path):
+                os.remove(checkpoint_path)
+
+        except RegistryError as e:
+            warnings.warn(str(e))
+            if attempt:
+                try:
+                    registry.finish(attempt, 'failed', None, {}, {}, type(e).__name__)
+                except RegistryError as registry_error:
+                    warnings.warn(str(registry_error))
+        except requests.RequestException as e:
+            if attempt:
+                try:
+                    registry.finish(attempt, 'failed', None, {}, {}, type(e).__name__)
+                except RegistryError as registry_error:
+                    warnings.warn(str(registry_error))
+            warnings.warn(safe_http_error_message(e))
+        except Exception as e:
+            if attempt:
+                try:
+                    registry.finish(attempt, 'failed', None, {}, {}, type(e).__name__)
+                except RegistryError as registry_error:
+                    warnings.warn(str(registry_error))
+            with open(error_path, "w") as f:
+                f.write('[' + str(datetime.datetime.now()) + ']  Exception: \n' + str(e) + '\n')
 
 print('[' + str(datetime.datetime.now()) + '] Crawler finished.')

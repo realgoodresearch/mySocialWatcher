@@ -23,12 +23,12 @@ services:
       context: ../..
       dockerfile: docker/api_v2/Dockerfile
     environment:
-      SOCIALWATCHER_V2_DATABASE_URL: postgresql+psycopg://v2_test:v2_test_only@v2_test_db:5432/socialwatcher_v2_test
+      SOCIALWATCHER_V2_DATABASE_URL: postgresql+psycopg://writer:v2_test_writer@v2_test_db:5432/socialwatcher_v2_test
     depends_on:
       v2_test_db:
         condition: service_healthy
     ports:
-      - "127.0.0.1:8001:8001"
+      - "127.0.0.1:18001:8001"
     networks:
       - v2_test_net
 

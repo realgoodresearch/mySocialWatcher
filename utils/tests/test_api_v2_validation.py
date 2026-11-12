@@ -49,6 +49,24 @@ class ValidationTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             normalize_row(row(mau=None, mau_lower=None, mau_upper=None))
 
+    def test_missing_dau_uses_sentinel_and_preserves_meta_response(self):
+        response = {
+            "data": [
+                {
+                    "estimate_mau_lower_bound": 85600,
+                    "estimate_mau_upper_bound": 100700,
+                    "estimate_ready": True,
+                }
+            ]
+        }
+        raw = row(mau=None, mau_lower=85600, mau_upper=100700, response=response)
+        del raw["dau"]
+
+        result = normalize_row(raw)
+
+        self.assertEqual(result.dau, -1)
+        self.assertEqual(result.response, response)
+
     def test_rejects_ambiguous_country(self):
         geo = {"values": [{"country_code": "GB"}, {"country_code": "FR"}]}
         with self.assertRaisesRegex(ValueError, "more than one"):

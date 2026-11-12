@@ -1,9 +1,16 @@
 import json
+import tempfile
 import unittest
+from pathlib import Path
 
 import pandas as pd
+import requests
 
-from mysocialwatcher.crawler.batch import dataframe_to_v2_rows, submit_dataframe_v2
+from mysocialwatcher.crawler.batch import (
+    dataframe_to_v2_rows,
+    mark_better_estimates,
+    submit_dataframe_v2,
+)
 
 
 def frame():
@@ -27,7 +34,8 @@ class FakeResponse:
 
     def json(self):
         return {
-            "results": [{"source_index": 0, "status": 200, "message": "OK: row inserted."}],
+            "results": [{"source_index": 0, "status": 200, "action": "inserted",
+                         "message": "OK: row inserted."}],
             "errors": [],
         }
 
@@ -42,6 +50,15 @@ class FakeSession:
 
 
 class BatchClientTests(unittest.TestCase):
+    def test_marks_legacy_refinement_without_mutating_source(self):
+        source = frame()
+        marked = mark_better_estimates(source)
+        rows, errors = dataframe_to_v2_rows(marked)
+
+        self.assertFalse(errors)
+        self.assertTrue(rows[0]["all_fields"]["better_estimates"])
+        self.assertNotIn("better_estimates", source.loc[0, "all_fields"])
+
     def test_converts_legacy_fields_to_json_objects(self):
         rows, errors = dataframe_to_v2_rows(frame())
         self.assertFalse(errors)
@@ -51,17 +68,23 @@ class BatchClientTests(unittest.TestCase):
 
     def test_successful_batch_creates_compatible_log_columns(self):
         session = FakeSession()
-        result = submit_dataframe_v2(frame(), "test", "token", "http://v2", session=session)
+        completed = []
+        result = submit_dataframe_v2(frame(), "test", "token", "http://v2", session=session,
+                                     batch_complete=lambda: completed.append(True))
         self.assertEqual(result.loc[0, "status_api"], 200)
-        self.assertEqual(list(result.columns), ["timestamp_api", "status_api", "message_api"])
+        self.assertEqual(list(result.columns),
+                         ["timestamp_api", "status_api", "action_api", "message_api"])
+        self.assertEqual(result.loc[0, "action_api"], "inserted")
         self.assertEqual(session.requests[0][1]["json"]["rows"][0]["source_index"], 0)
+        self.assertEqual(completed, [True])
 
     def test_duplicate_result_is_written_as_409(self):
         class DuplicateResponse(FakeResponse):
             def json(self):
                 return {
                     "results": [{"source_index": 0, "status": 409,
-                                 "message": "Conflict: row already exists."}],
+                                 "action": "unchanged",
+                                 "message": "Conflict: existing row retained."}],
                     "errors": [],
                 }
 
@@ -73,7 +96,75 @@ class BatchClientTests(unittest.TestCase):
         result = submit_dataframe_v2(frame(), "test", "token", "http://v2",
                                      session=DuplicateSession())
         self.assertEqual(result.loc[0, "status_api"], 409)
-        self.assertEqual(result.loc[0, "message_api"], "Conflict: row already exists.")
+        self.assertEqual(result.loc[0, "action_api"], "unchanged")
+        self.assertEqual(result.loc[0, "message_api"], "Conflict: existing row retained.")
+
+    def test_promotion_is_written_to_log(self):
+        class PromotionResponse(FakeResponse):
+            def json(self):
+                return {
+                    "results": [{"source_index": 0, "status": 200,
+                                 "action": "promoted",
+                                 "message": "OK: existing row promoted with refined estimates."}],
+                    "errors": [],
+                }
+
+        class PromotionSession(FakeSession):
+            def post(self, url, **kwargs):
+                self.requests.append((url, kwargs))
+                return PromotionResponse()
+
+        result = submit_dataframe_v2(frame(), "test", "token", "http://v2",
+                                     session=PromotionSession())
+        self.assertEqual(result.loc[0, "status_api"], 200)
+        self.assertEqual(result.loc[0, "action_api"], "promoted")
+
+    def test_checkpoint_resumes_after_completed_batch(self):
+        source = pd.concat([frame(), frame(), frame()], ignore_index=True)
+
+        class BatchResponse(FakeResponse):
+            def __init__(self, rows):
+                self.rows = rows
+
+            def json(self):
+                return {
+                    "results": [
+                        {"source_index": row["source_index"], "status": 200,
+                         "action": "inserted", "message": "OK: row inserted."}
+                        for row in self.rows
+                    ],
+                    "errors": [],
+                }
+
+        class InterruptedSession(FakeSession):
+            def post(self, url, **kwargs):
+                self.requests.append((url, kwargs))
+                if len(self.requests) == 2:
+                    raise requests.ConnectionError("controlled interruption")
+                return BatchResponse(kwargs["json"]["rows"])
+
+        class ResumeSession(FakeSession):
+            def post(self, url, **kwargs):
+                self.requests.append((url, kwargs))
+                return BatchResponse(kwargs["json"]["rows"])
+
+        with tempfile.TemporaryDirectory() as directory:
+            checkpoint = Path(directory) / "partial_log.csv.gz"
+            interrupted = InterruptedSession()
+            with self.assertRaises(requests.ConnectionError):
+                submit_dataframe_v2(source, "test", "token", "http://v2", batch_size=1,
+                                    session=interrupted, checkpoint_path=checkpoint)
+            partial = pd.read_csv(checkpoint, index_col=0)
+            self.assertEqual(list(partial.index), [0])
+
+            resumed = ResumeSession()
+            result = submit_dataframe_v2(source, "test", "token", "http://v2",
+                                         batch_size=1, session=resumed,
+                                         checkpoint_path=checkpoint)
+            sent = [request[1]["json"]["rows"][0]["source_index"]
+                    for request in resumed.requests]
+            self.assertEqual(sent, [1, 2])
+            self.assertEqual(list(result["action_api"]), ["inserted"] * 3)
 
 
 if __name__ == "__main__":
