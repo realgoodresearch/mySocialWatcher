@@ -77,6 +77,37 @@ class RegistryObserver:
             raise RegistryError(f"registry {mode} returned an invalid attempt handle")
         return body
 
+    def preflight(self, data_dir: Path, sources: list[Path], batch_size: int = 1000) -> dict[Path, tuple[int, int]]:
+        completed = {}
+        for offset in range(0, len(sources), batch_size):
+            snapshot = {}
+            files = []
+            for source in sources[offset:offset + batch_size]:
+                stat = source.stat()
+                relative_path = relative_source_path(data_dir, source)
+                snapshot[relative_path] = (source, stat.st_size, stat.st_mtime_ns)
+                files.append({
+                    "relative_path": relative_path,
+                    "archive_size": stat.st_size,
+                    "archive_mtime_ns": stat.st_mtime_ns,
+                })
+            try:
+                response = self.session.post(
+                    f"{self.url}/files/preflight",
+                    json={"token": self.token, "files": files}, timeout=(10, 30))
+                response.raise_for_status()
+                body = response.json()
+            except (ValueError, requests.RequestException) as exc:
+                raise RegistryError(f"registry preflight failed: {type(exc).__name__}") from exc
+            completed_paths = body.get("completed_paths")
+            if (not isinstance(completed_paths, list)
+                    or any(path not in snapshot for path in completed_paths)):
+                raise RegistryError("registry preflight returned an invalid response")
+            for relative_path in completed_paths:
+                source, size, mtime_ns = snapshot[relative_path]
+                completed[source] = (size, mtime_ns)
+        return completed
+
     def observe(self, data_dir: Path, source: Path, collection: str) -> dict:
         return self._start("observe", data_dir, source, collection)
 

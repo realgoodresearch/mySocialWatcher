@@ -27,6 +27,8 @@ class Session:
 
     def post(self, url, json, timeout):
         self.calls.append((url, json, timeout))
+        if url.endswith("/files/preflight"):
+            return Response({"completed_paths": [item["relative_path"] for item in json["files"]]})
         if url.endswith("/files/observe"):
             return Response({"decision": "observe", "attempt_id": 1, "attempt_token": "token"})
         if url.endswith("/files/claim"):
@@ -39,6 +41,25 @@ class Session:
 
 
 class RegistryHashingTests(unittest.TestCase):
+    def test_preflight_uses_only_path_and_file_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "collector/finished/file.csv.gz"
+            source.parent.mkdir(parents=True)
+            source.write_bytes(b"not read by preflight")
+            session = Session()
+            registry = RegistryObserver("http://api/socialwatcher/v2", "secret", "crawler-1", session)
+
+            result = registry.preflight(root, [source])
+
+            self.assertEqual(result[source], (source.stat().st_size, source.stat().st_mtime_ns))
+            url, payload, _ = session.calls[0]
+            self.assertTrue(url.endswith("/files/preflight"))
+            self.assertEqual(payload["files"][0]["relative_path"], "collector/finished/file.csv.gz")
+            self.assertEqual(payload["files"][0]["archive_size"], source.stat().st_size)
+            self.assertEqual(payload["files"][0]["archive_mtime_ns"], source.stat().st_mtime_ns)
+            self.assertNotIn("content_sha256", payload)
+
     def test_hashes_decompressed_bytes_and_records_relative_archive_metadata(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

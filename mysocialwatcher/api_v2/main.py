@@ -14,6 +14,7 @@ from mysocialwatcher.api_v2.database import (
 )
 from mysocialwatcher.api_v2.schemas import (AttemptFinishRequest, BatchWriteRequest, BatchWriteResponse,
                                              HealthResponse, LeaseRenewRequest, LeaseRenewResponse,
+                                             RegistryPreflightRequest, RegistryPreflightResponse,
                                              RegistryStartRequest, RegistryStartResponse)
 from mysocialwatcher.api_v2.service import process_batch
 
@@ -98,6 +99,17 @@ def observe_file(request: RegistryStartRequest, writer: RegistryWriter = Depends
 def claim_file(request: RegistryStartRequest, writer: RegistryWriter = Depends(get_registry_writer)):
     try:
         return writer.start("enforce", request)
+    except AuthenticationError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except DatabaseWriteError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/socialwatcher/v2/files/preflight", response_model=RegistryPreflightResponse)
+def preflight_file(request: RegistryPreflightRequest,
+                   writer: RegistryWriter = Depends(get_registry_writer)):
+    try:
+        return {"completed_paths": writer.preflight(request)}
     except AuthenticationError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except DatabaseWriteError as exc:

@@ -20,6 +20,7 @@ All paths below are relative to `/socialwatcher/v2`.
 | `GET /health` | Process health without a database query |
 | `POST /write-batch` | Validate and write 1–1,000 normalized audience rows |
 | `POST /files/observe` | Record a non-authoritative file observation |
+| `POST /files/preflight` | Skip an unchanged completed path before hashing |
 | `POST /files/claim` | Claim logical file content for exclusive processing |
 | `POST /file-attempts/{id}/renew` | Renew an active enforced claim |
 | `POST /file-attempts/{id}/finish` | Record terminal file and row outcomes |
@@ -83,6 +84,8 @@ Identical decompressed content is authoritative even if its path or gzip represe
 Only `process` and `retry` return an attempt ID, secret attempt token, and lease expiry. The crawler renews the lease between ingestion batches. Completion requires the authenticated owner, attempt secret, a terminal outcome, and row counts that reconcile to the source total.
 
 Completed and completed-with-rejections attempts are authoritative. Failed, corrupt, abandoned, and expired work remains retryable. Registry observations are diagnostic and never block or satisfy an enforced claim.
+
+The crawler first calls `/files/preflight` with batches of up to 1,000 relative paths, compressed sizes, and filesystem modification times. The API returns the paths for which the same contributor has a completed enforced attempt with the exact path and size whose completion is at least as recent as the file modification. Other files follow the normal decompressed-hash claim workflow. The crawler also rechecks file metadata before skipping so a concurrently changed file cannot be skipped from a stale preflight result.
 
 ### Registry database schema
 

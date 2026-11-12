@@ -269,6 +269,11 @@ def crawler(data_dir, token,
     # Sort by modification time, most recent first
     file_list.sort(key=os.path.getmtime, reverse=True)
 
+    try:
+        completed_files = registry.preflight(Path(data_dir), [Path(file) for file in file_list])
+    except (OSError, RegistryError) as registry_error:
+        raise RegistryError(str(registry_error)) from registry_error
+
     # ---- finished ---- #
     for file in file_list:
         # file = file_list[0]
@@ -282,6 +287,13 @@ def crawler(data_dir, token,
         temp_path = out_path.replace('log.csv.gz', 'temp.txt')
         error_path = out_path.replace('log.csv.gz', 'error.txt')
         checkpoint_path = out_path.replace('_log.csv.gz', '_partial_log.csv.gz')
+
+        completed_fingerprint = completed_files.get(Path(file))
+        if completed_fingerprint is not None:
+            current = Path(file).stat()
+            if completed_fingerprint == (current.st_size, current.st_mtime_ns):
+                continue
+
         print('[' + str(datetime.datetime.now()) + '] ' + file)
 
         attempt = None

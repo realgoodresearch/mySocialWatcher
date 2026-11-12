@@ -90,6 +90,8 @@ Many crawlers can be launched simultaneously using `docker compose up -d` from `
 
 The registry is always the crawler's completion authority. The crawler considers every eligible source file by modification time, newest first, skips content already completed in the registry, and writes reports beneath `data/crawler/registry/` without changing legacy completion logs. This allows the routine midnight restart to process newly synced files first and then continue backward through uncrawled history. Registry claims also coordinate replicas and recover expired work after interruption, so runs do not create `temp.txt` markers.
 
+Before hashing candidates, the crawler performs registry preflight checks in batches of up to 1,000 using relative path, compressed size, and modification time. An unchanged path completed after that modification time is skipped without reading the file. New, moved, or modified files still use the decompressed SHA-256 identity, so path preflight is only an optimization and does not replace content verification.
+
 Optionally limit any crawl with `CRAWL_DATE_FROM`, `CRAWL_DATE_TO`, and/or `CRAWL_PATH_PREFIX` relative to `DATA_DIR`. Date bounds are inclusive and use the `YYYYMMDD` crawl date at the end of each source filename. Omitting all filters selects every eligible source file. For example:
 
 ```dotenv
