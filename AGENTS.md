@@ -61,6 +61,19 @@ or engineering rule.
   advise rotation/revocation where appropriate, and use environment variables
   or the project-approved secret mechanism instead.
 
+## System orientation
+
+- Read the relevant sections of `README.md` and `docs/api-v2.md` before
+  changing crawler, registry, API v2, or database behavior. Keep detailed
+  architecture, validation rules, endpoint behavior, and operational commands
+  in those documents rather than duplicating them here.
+- API v2 and its database are production services. The crawler registry is the
+  completion authority for registry-based crawls.
+- Preserve raw crawler source files and original Meta response JSON exactly.
+  Crawler reports are separate artifacts beneath `data/crawler/registry/`.
+- Use the standard scripts in `utils/` for routine production crawler
+  operations unless the user explicitly approves a different mechanism.
+
 ## Production safety
 
 - Treat API v2 and its database as production services. Do not run tests
@@ -84,8 +97,27 @@ or engineering rule.
   a better decision.
 - When requirements, data behavior, or operational facts are unclear, ask the
   user rather than continuing from an assumption.
+- Pause at material milestones to report findings and agree on the next step.
+- Before starting an audit, crawl, migration, or other operational run, state
+  its scope, environment, command, expected duration, and stopping behavior.
+  Wait for the user's explicit approval to start it.
+- Clearly distinguish production, isolated test, and development containers,
+  databases, services, and data in operational updates.
 - Design long-running processes to run independently, with results that can be
   checked periodically and safely stopped when appropriate. Do not
   continuously poll them.
+- Do not stop a running process merely to inspect it. Verify its actual process
+  or container state before reporting that it is running or stopped. Preserve
+  production work unless the user asks to stop it or continuing poses a
+  credible risk of damage.
+- Prefer a representative sample when it can answer the question. Expand the
+  analysis only when the sample leaves material uncertainty.
+- Trace unexpected aggregates through a few real source rows, crawler reports,
+  API decisions, and database rows before drawing conclusions. Keep metrics
+  such as rejected, unchanged, inserted, promoted, active leases, and expired
+  claims distinct.
+- Separate observed facts from inference, and identify whether evidence comes
+  from code, a sample, or exhaustive data. Pause and ask when new evidence
+  contradicts the current interpretation.
 - Conserve tokens by reporting only material progress and avoiding needless
   monitoring of long-running processes.
