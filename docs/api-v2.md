@@ -87,6 +87,8 @@ Completed and completed-with-rejections attempts are authoritative. Failed, corr
 
 The crawler first calls `/files/preflight` with batches of up to 1,000 relative paths, compressed sizes, and filesystem modification times. The API returns the paths for which the same contributor has a completed enforced attempt with the exact path and size whose completion is at least as recent as the file modification. Other files follow the normal decompressed-hash claim workflow. The crawler also rechecks file metadata before skipping so a concurrently changed file cannot be skipped from a stale preflight result.
 
+If gzip decompression fails before a content identity can be calculated, the crawler records a fingerprinted `*_corrupt.json` diagnostic in its registry report tree and continues with the next candidate. An unchanged corrupt archive is skipped on later runs; changing its size or modification time removes the skip and retries normal hashing.
+
 ### Registry database schema
 
 `crawler_files` stores logical content identities. `crawler_file_attempts` stores each observation or enforced processing attempt. Database functions serialize claims, renew leases, validate ownership, and enforce terminal count invariants. Only the PostgreSQL writer role can mutate registry state.

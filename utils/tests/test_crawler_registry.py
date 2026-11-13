@@ -5,7 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from mysocialwatcher.crawler.registry import RegistryObserver, decompressed_sha256, relative_source_path
+from mysocialwatcher.crawler.registry import (CorruptArchiveError, RegistryObserver,
+                                              decompressed_sha256, relative_source_path)
 
 
 class Response:
@@ -41,6 +42,20 @@ class Session:
 
 
 class RegistryHashingTests(unittest.TestCase):
+    def test_truncated_gzip_is_reported_as_corrupt_archive(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "collector/finished/file.csv.gz"
+            source.parent.mkdir(parents=True)
+            with gzip.open(source, "wb") as stream:
+                stream.write(b"column,value\nexample,1\n")
+            source.write_bytes(source.read_bytes()[:-8])
+            registry = RegistryObserver(
+                "http://api/socialwatcher/v2", "secret", "crawler-1", Session())
+
+            with self.assertRaisesRegex(CorruptArchiveError, "EOFError"):
+                registry.claim(root, source, "collector")
+
     def test_preflight_uses_only_path_and_file_metadata(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

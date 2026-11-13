@@ -92,6 +92,8 @@ The registry is always the crawler's completion authority. The crawler considers
 
 Before hashing candidates, the crawler performs registry preflight checks in batches of up to 1,000 using relative path, compressed size, and modification time. An unchanged path completed after that modification time is skipped without reading the file. New, moved, or modified files still use the decompressed SHA-256 identity, so path preflight is only an optimization and does not replace content verification.
 
+Unreadable gzip archives do not stop the crawl. The crawler writes a `*_corrupt.json` diagnostic beneath `data/crawler/registry/`, skips that archive while its size and modification time remain unchanged, and retries it automatically after replacement or modification.
+
 Optionally limit any crawl with `CRAWL_DATE_FROM`, `CRAWL_DATE_TO`, and/or `CRAWL_PATH_PREFIX` relative to `DATA_DIR`. Date bounds are inclusive and use the `YYYYMMDD` crawl date at the end of each source filename. Omitting all filters selects every eligible source file. For example:
 
 ```dotenv

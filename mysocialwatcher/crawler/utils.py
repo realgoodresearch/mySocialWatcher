@@ -5,6 +5,7 @@ import math
 import numpy
 import datetime
 import warnings
+from uuid import uuid4
 import re
 from pathlib import Path
 from time import sleep
@@ -12,7 +13,7 @@ import pandas as pd
 from ast import literal_eval
 
 from mysocialwatcher.crawler.batch import mark_better_estimates, submit_dataframe_v2
-from mysocialwatcher.crawler.registry import RegistryError, RegistryObserver
+from mysocialwatcher.crawler.registry import CorruptArchiveError, RegistryError, RegistryObserver
 
 
 CRAWL_DATE_PATTERN = re.compile(r"_(\d{8})(?:_betterestimate)?\.csv\.gz$")
@@ -52,6 +53,31 @@ def safe_http_error_message(exc, response=None):
     if isinstance(response, requests.models.Response):
         return f'EXCEPTION: "{exception}"; HTTP STATUS: {response.status_code}'
     return f'EXCEPTION: "{exception}"; HTTP STATUS: unavailable'
+
+
+def corrupt_archive_marker_matches(marker_path, source_path):
+    try:
+        marker = json.loads(Path(marker_path).read_text(encoding='utf-8'))
+        source = Path(source_path).stat()
+        return (marker.get('archive_size'), marker.get('archive_mtime_ns')) == (
+            source.st_size, source.st_mtime_ns)
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def write_corrupt_archive_marker(marker_path, source_path, relative_path, error_type):
+    source = Path(source_path).stat()
+    marker = {
+        'relative_path': relative_path,
+        'archive_size': source.st_size,
+        'archive_mtime_ns': source.st_mtime_ns,
+        'detected_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        'error_type': error_type,
+    }
+    marker_path = Path(marker_path)
+    temporary = marker_path.with_name(f'{marker_path.name}.{uuid4().hex}.tmp')
+    temporary.write_text(json.dumps(marker, sort_keys=True) + '\n', encoding='utf-8')
+    temporary.replace(marker_path)
 
 
 # def country_from_geo(geo):
@@ -287,12 +313,18 @@ def crawler(data_dir, token,
         temp_path = out_path.replace('log.csv.gz', 'temp.txt')
         error_path = out_path.replace('log.csv.gz', 'error.txt')
         checkpoint_path = out_path.replace('_log.csv.gz', '_partial_log.csv.gz')
+        corrupt_path = out_path.replace('_log.csv.gz', '_corrupt.json')
 
         completed_fingerprint = completed_files.get(Path(file))
         if completed_fingerprint is not None:
             current = Path(file).stat()
             if completed_fingerprint == (current.st_size, current.st_mtime_ns):
                 continue
+
+        if os.path.exists(corrupt_path):
+            if corrupt_archive_marker_matches(corrupt_path, file):
+                continue
+            Path(corrupt_path).unlink(missing_ok=True)
 
         print('[' + str(datetime.datetime.now()) + '] ' + file)
 
@@ -301,6 +333,12 @@ def crawler(data_dir, token,
         try:
             attempt = registry.claim(Path(data_dir), Path(file), collection_name,
                                      registry_lease_seconds)
+        except CorruptArchiveError as corrupt_error:
+            write_corrupt_archive_marker(
+                corrupt_path, file, Path(file).relative_to(data_dir).as_posix(),
+                str(corrupt_error))
+            warnings.warn(f'Corrupt archive skipped: {Path(file).relative_to(data_dir)}')
+            continue
         except RegistryError as registry_error:
             warnings.warn(str(registry_error))
             continue
