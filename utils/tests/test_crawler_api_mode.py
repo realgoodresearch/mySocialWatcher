@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pandas as pd
 import requests
 
+from mysocialwatcher.crawler.registry import CorruptArchiveError
 from mysocialwatcher.crawler.utils import crawler
 
 
@@ -45,6 +46,46 @@ class CrawlerModeTests(unittest.TestCase):
             crawler(str(self.root), "token", "http://v2", registry_url="http://registry")
 
         submit.assert_not_called()
+
+    def test_corrupt_archive_is_skipped_until_its_fingerprint_changes(self):
+        corrupt = self.source.with_name("dataframe_collected_finished_corrupt.csv.gz")
+        corrupt.write_bytes(b"truncated")
+
+        class Registry:
+            def __init__(self):
+                self.corrupt_claims = 0
+
+            def preflight(self, *args):
+                return {}
+
+            def claim(self, data_dir, source, collection, lease_seconds):
+                if "corrupt" in source.name:
+                    self.corrupt_claims += 1
+                    raise CorruptArchiveError("EOFError")
+                return {"decision": "process", "attempt_id": 5, "attempt_token": "token"}
+
+            def renew(self, *args):
+                return None
+
+            def finish(self, *args):
+                return None
+
+        registry = Registry()
+        with patch("mysocialwatcher.crawler.utils.RegistryObserver", return_value=registry), \
+             patch("mysocialwatcher.crawler.utils.submit_dataframe_v2",
+                   side_effect=self.response) as submit:
+            crawler(str(self.root), "token", "http://v2", registry_url="http://registry")
+            crawler(str(self.root), "token", "http://v2", registry_url="http://registry")
+            self.assertEqual(registry.corrupt_claims, 1)
+            marker = (self.root / "crawler/registry/host/collection/finished/"
+                      "dataframe_collected_finished_corrupt_corrupt.json")
+            self.assertTrue(marker.exists())
+
+            corrupt.write_bytes(b"replacement with a different fingerprint")
+            crawler(str(self.root), "token", "http://v2", registry_url="http://registry")
+
+        self.assertEqual(registry.corrupt_claims, 2)
+        self.assertEqual(submit.call_count, 3)
 
     def test_registry_filters_by_filename_date_and_writes_separate_log(self):
         selected = self.source.with_name(

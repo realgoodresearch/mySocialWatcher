@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import gzip
 import hashlib
+import zlib
 from pathlib import Path
 from uuid import uuid4
 
@@ -10,6 +11,10 @@ import requests
 
 
 class RegistryError(Exception):
+    pass
+
+
+class CorruptArchiveError(RegistryError):
     pass
 
 
@@ -48,7 +53,10 @@ class RegistryObserver:
 
     def _start(self, mode: str, data_dir: Path, source: Path, collection: str,
                lease_seconds: int | None = None) -> dict:
-        content_hash, uncompressed_size = decompressed_sha256(source)
+        try:
+            content_hash, uncompressed_size = decompressed_sha256(source)
+        except (EOFError, gzip.BadGzipFile, zlib.error) as exc:
+            raise CorruptArchiveError(type(exc).__name__) from exc
         payload = {
             "token": self.token,
             "content_sha256": content_hash,
