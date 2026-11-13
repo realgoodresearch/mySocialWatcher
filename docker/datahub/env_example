@@ -7,3 +7,4 @@ POSTGRES_PASSWORD=superuser_passwd
 POSTGRES_RPASS=readonly_passwd
 POSTGRES_WPASS=write_passwd
 LIMITER_HOST=datahub_limiter
+SOCIALWATCHER_V2_WORKERS=1

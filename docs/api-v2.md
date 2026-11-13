@@ -161,6 +161,12 @@ The migration runner uses a transaction and advisory lock, records SHA-256 check
 
 API v2 is the `datahub_api_v2` service in the datahub Compose stack. It shares the datahub network, connects to the production database through the writer role, and binds port 8001 only on localhost. Nginx proxies `/socialwatcher/v2` to that service.
 
+`SOCIALWATCHER_V2_WORKERS` controls the number of Uvicorn worker processes and
+defaults to `1`. Each worker can open up to three batch-writer and three
+registry-writer database connections, so review total PostgreSQL connection
+capacity before increasing it. Benchmark changes in the isolated environment
+and change crawler replica count separately.
+
 Build and recreate only API v2 so the production database and v1 services are not restarted:
 
 ```bash
@@ -192,6 +198,15 @@ Start the disposable API and PostgreSQL environment:
 ```bash
 docker compose -p socialwatcher_v2_test \
   -f docker/api_v2/docker-compose.test.yml up -d --build --wait
+```
+
+Set `SOCIALWATCHER_V2_WORKERS` to exercise the same image with a specific
+worker count. The capped benchmark writes only to the disposable test database:
+
+```bash
+SOCIALWATCHER_V2_WORKERS=4 docker compose -p socialwatcher_v2_test \
+  -f docker/api_v2/docker-compose.test.yml up -d --build --wait
+python3 docker/api_v2/benchmark.py
 ```
 
 Remove it afterward:

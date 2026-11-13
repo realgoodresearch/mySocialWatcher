@@ -24,6 +24,7 @@ services:
       dockerfile: docker/api_v2/Dockerfile
     environment:
       SOCIALWATCHER_V2_DATABASE_URL: postgresql+psycopg://writer:v2_test_writer@v2_test_db:5432/socialwatcher_v2_test
+      SOCIALWATCHER_V2_WORKERS: ${SOCIALWATCHER_V2_WORKERS:-1}
     depends_on:
       v2_test_db:
         condition: service_healthy
