@@ -7,6 +7,8 @@ services:
       - ./../../../data/serenity/migration_asia_pacific:/app/data
     build:
       args:
+          pysocialwatcher_opt_flag: "true"
+          betterestimates_flag: "true"
           sleep_time: 2
           email_notification_enable: "True"
           email_receiver: "doug@realgoodresearch.com"

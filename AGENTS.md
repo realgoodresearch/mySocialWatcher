@@ -32,6 +32,8 @@ or engineering rule.
 4. Write issues, comments, and pull requests in clear, concise language. State
    the decision, rationale, scope, and validation; link related issues, commits,
    and pull requests where useful.
+   When using `gh` for multiline Markdown, provide the body through a file or
+   heredoc; do not rely on escaped `\n` sequences in a command argument.
 5. Commit at logical development milestones. Keep each commit focused on one
    logical change. Use a concise imperative subject, reference its issue, and
    explain non-obvious rationale in the body. Do not mix behavior changes with

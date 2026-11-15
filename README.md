@@ -55,6 +55,24 @@ One or more collectors can be configured using the following steps (see existing
 
 Once all of the collector configuration files are in place, you can launch the containers as background instances using `docker compose up -d` from within the collector directory.
 
+#### Sparse-query options
+
+Collectors can opt into two build arguments under `build.args`:
+
+```yaml
+pysocialwatcher_opt_flag: "true"
+betterestimates_flag: "true"
+```
+
+`pysocialwatcher_opt_flag` uses the optimized collector to infer and impute
+queries known to be sparse, reducing unnecessary Meta API calls. After a
+completed collection, `betterestimates_flag` retries rows whose MAU estimate is
+`1000` or missing using alternative countries to seek a tighter estimate. It
+writes separate `*_betterestimate.csv.gz` refinement files and leaves the
+original collection file unchanged. Refinement can add substantial API traffic
+for collections with many sparse queries; enable it only where that trade-off
+is intended. Use the exact key `betterestimates_flag` (not `betterestimates`).
+
 ### Datahub (database + API)
 The datahub requires an environment file to exist in `./docker/datahub/.env` that defines database and API credentials. See `./docker/datahub/env_example` for an example. 
 

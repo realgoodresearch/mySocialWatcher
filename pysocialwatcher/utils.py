@@ -116,9 +116,11 @@ def call_request_fb(row, token, account, url):
         'targeting_spec': json.dumps(target_request),
         'access_token': token,
     }
-    payload_str = str(payload)
     if constants.VERBOSE:
-        print_warning("\tSending in request: %s" % (payload_str))
+        log_payload = payload.copy()
+        token_prefix = str(token)[:5]
+        log_payload['access_token'] = "%s…[REDACTED]" % token_prefix
+        print_warning("\tSending in request: %s" % log_payload)
     url = url.format(account)
     response = send_request(url, payload)
 
@@ -854,4 +856,3 @@ def get_all_countries(two_letters_code=True):
     
     
     
-
